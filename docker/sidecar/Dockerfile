@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates socat && rm -rf /var/lib/apt/lists/*
 RUN pip install "mitmproxy>=11,<12"
 
-COPY swarmpot/sidecar.py /opt/sidecar/sidecar.py
+COPY swarmpot/__init__.py swarmpot/sidecar.py swarmpot/breadcrumbs.py /opt/sidecar/swarmpot/
+ENV PYTHONPATH=/opt/sidecar
 COPY docker/sidecar/entrypoint.sh /usr/local/bin/sidecar-entrypoint
 RUN chmod 0755 /usr/local/bin/sidecar-entrypoint
 

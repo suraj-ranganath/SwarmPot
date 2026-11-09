@@ -9,6 +9,8 @@ from .events import EventLog
 from .util import iter_jsonl_incremental
 
 SSH_TRACE_EVENTS = {
+    "cowrie.client.version",
+    "cowrie.client.kex",
     "cowrie.session.connect",
     "cowrie.login.success",
     "cowrie.login.failed",

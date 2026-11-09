@@ -1,6 +1,7 @@
 # Local upstream checkouts, pulled by scripts/bootstrap_upstream.sh and pinned in
 # vendor.lock.json. They are reproducible, not source-of-truth files.
 vendor/
+/vendor
 runs/
 scratch/
 
@@ -8,5 +9,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
+/.venv
 *.egg-info/
 .DS_Store

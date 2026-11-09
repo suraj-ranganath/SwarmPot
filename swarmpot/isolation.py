@@ -81,6 +81,7 @@ def write_reset_manifest(
         "decoy_enabled": decoy_enabled,
         "decoy_seed_reset": decoy_enabled,
         "lure_enabled": lure_enabled,
+        "breadcrumb_state": "fresh per-episode sidecar/breadcrumb_profile.json; regenerated before attacker startup",
         "seed_inventory_sha256": seed_inventory_hash(list(seed_rows)),
         "persistence": persistence_inventory(paths),
         "shared_writable_state_between_attempts": [],

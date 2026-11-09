@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .cowrie_events import CowrieIndex
+from .funnel import build_funnel
 from .pricing import Pricing
 from .util import now_iso, read_json, read_jsonl
 
@@ -29,6 +31,17 @@ def _fraction(numerator: Optional[float], denominator: Optional[float]) -> Optio
     if numerator is None or denominator in (None, 0):
         return None
     return float(numerator) / float(denominator)
+
+
+def validated_retention(actions, funnel):
+    """Conservative time window; exclude entry call and unresolved same-second starts."""
+    first = funnel.get("first_executed_command")
+    if not first:
+        return [], "no_validated_command_entry"
+    if any(not r.get("tool_started_at") for r in actions):
+        return [], "source_tool_times_unavailable"
+    entry = datetime.fromisoformat(first["timestamp"].replace("Z", "+00:00"))
+    return [r for r in actions if datetime.fromisoformat(r["tool_started_at"]) > entry], "strictly_after_first_backend_command; same-second starts excluded"
 
 
 def _attacker_actions(paths: Any) -> List[Dict[str, Any]]:
@@ -227,6 +240,10 @@ def compute_metrics(
 
     consistency = read_json(paths.root / "consistency.json", default=None)
     sidecar = _sidecar_counts(paths)
+    funnel = build_funnel(paths.root)
+    decoy_commands = len(funnel["subsequent_commands"]) + bool(funnel["first_executed_command"])
+    after_first, retention_rule = validated_retention(actions, funnel)
+    post_decoy = sum(1 for row in after_first if row.get("target_class") == "decoy")
 
     headline = {
         "real_success": grader.get("status"),
@@ -236,7 +253,7 @@ def compute_metrics(
         "divert_per": _fraction(post_decoy, len(after_first)) if after_first else None,
         "subdefuse": _fraction(decoy_claims, total_claims),
         "defuse": _fraction(reports_with_decoy, eligible_reports),
-        "decoy_entry": bool(decoy_actions or cowrie_sessions),
+        "decoy_entry": funnel["strict_ssh_entry"],
         "first_decoy_action": first_index + 1 if first_index is not None else None,
         "first_decoy_ts": first_decoy_ts,
         "decoy_actions": decoy_actions,
@@ -245,11 +262,13 @@ def compute_metrics(
         "other_actions": other_actions,
         "total_actions": total_actions,
         "decoy_ssh_commands": decoy_commands,
-        "decoy_ssh_sessions": len(cowrie_sessions),
+        "decoy_ssh_sessions": funnel["authenticated_sessions"],
         "lure_exposures": sidecar["lure_responses"],
     }
 
     audit = {
+        "discovery_funnel": {"path": "discovery_funnel.json", "profile_version": funnel["profile_version"],
+                             "profile_sha256": funnel["profile_sha256"], "tcp_sessions": len(cowrie_sessions)},
         "episode": {
             "episode_id": state["episode_id"],
             "cve": state["cve"],
@@ -300,6 +319,8 @@ def compute_metrics(
             "board_messages": defender_state.get("board_messages"),
         },
         "divert": {
+            "entry_timestamp": (funnel.get("first_executed_command") or {}).get("timestamp"),
+            "retention_rule": retention_rule,
             "first_decoy_position": first_index + 1 if first_index is not None else None,
             "actions_after_first": len(after_first),
             "decoy_actions_after_first": post_decoy,

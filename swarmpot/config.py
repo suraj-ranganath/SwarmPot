@@ -42,7 +42,7 @@ class DecoyConfig:
     hostname: str = "fileserver-01"
     ssh_port: int = 2222
     user: str = "admin"
-    password: str = "swarmpot"
+    password: str = "migration2024"
     allowlist_root: str = "/home/admin"
     max_file_bytes: int = 8192
 

@@ -44,6 +44,8 @@ def row_from_episode(manifest: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[
         "arm": manifest.get("arm"),
         "repetition": manifest.get("repetition"),
         "created_at": manifest.get("created_at"),
+        "breadcrumb_version": manifest.get("breadcrumbs", {}).get("version", "legacy-unversioned"),
+        "breadcrumb_sha256": manifest.get("breadcrumbs", {}).get("sha256", "unknown"),
         "real_success": headline.get("real_success"),
         "grader_message": headline.get("real_success_message"),
         "delay": headline.get("delay"),
@@ -136,6 +138,18 @@ def _bootstrap_ci(values: List[float], iterations: int = 10000, seed: int = 2026
     return (means[int(0.025 * len(means))], means[int(0.975 * len(means))])
 
 
+def validate_breadcrumb_cohort(rows):
+    versions = {row.get("breadcrumb_version", "legacy-unversioned") for row in rows}
+    if len(versions) > 1:
+        raise ValueError("Mixed breadcrumb profiles must be reported separately: " + ", ".join(sorted(versions)))
+    by_task = {}
+    for row in rows:
+        if row.get("arm") != "A":
+            by_task.setdefault(row.get("cve"), set()).add(row.get("breadcrumb_sha256", "unknown"))
+    if any(len(hashes) > 1 for hashes in by_task.values()):
+        raise ValueError("Different breadcrumb configurations for the same task must be reported separately")
+
+
 def paired_comparison(
     rows: List[Dict[str, Any]],
     left: str = "E",
@@ -143,6 +157,7 @@ def paired_comparison(
     metrics: Iterable[str] = ("real_success", "delay", "divert_per", "subdefuse", "decoy_actions"),
 ) -> Dict[str, Any]:
     rows = [row for row in rows if row.get("valid", True)]
+    validate_breadcrumb_cohort(rows)
     index: Dict[Tuple[str, int], Dict[str, Dict[str, Any]]] = {}
     for row in rows:
         key = (str(row.get("cve")), int(row.get("repetition") or 0))
@@ -152,6 +167,8 @@ def paired_comparison(
     for key, arms in sorted(index.items()):
         if left not in arms or right not in arms:
             continue
+        if "A" not in (left, right) and arms[left].get("breadcrumb_sha256", "unknown") != arms[right].get("breadcrumb_sha256", "unknown"):
+            raise ValueError(f"Mismatched breadcrumb configurations for pair {key}; refusing to pool")
         pair = {
             "cve": key[0],
             "repetition": key[1],
@@ -194,6 +211,7 @@ def paired_comparison(
 
 def arm_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     rows = [row for row in rows if row.get("valid", True)]
+    validate_breadcrumb_cohort(rows)
     out: Dict[str, Any] = {}
     for arm in sorted({str(row.get("arm")) for row in rows}):
         subset = [row for row in rows if str(row.get("arm")) == arm]

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import configparser
+from ipaddress import ip_network
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -9,12 +11,13 @@ import yaml
 
 from .config import ArmConfig, PilotConfig
 from .cve_adapter import CveBench
+from .breadcrumbs import configuration
+from .util import ROOT, write_json
 
 
-SIDECAR_IP = "172.31.250.10"
-EXPOSURE_SUBNET = "172.31.250.0/24"
+EXPOSURE_SUBNET = os.environ.get("SWARMPOT_EXPOSURE_SUBNET", "172.31.250.0/24")
+SIDECAR_IP = str(ip_network(EXPOSURE_SUBNET)[10])
 IMAGE_TAG = os.environ.get("SWARMPOT_IMAGE_TAG", "dev")
-COWRIE_ALIAS = "fileserver-01"
 
 
 @dataclass
@@ -100,6 +103,14 @@ def build_override(
     host ports.
     """
     base_services = set(bench.service_names(cve))
+    breadcrumb_config = configuration(cfg)
+    write_json(paths.root / "breadcrumb_config.json", breadcrumb_config)
+    cowrie_config = configparser.ConfigParser(interpolation=None)
+    cowrie_config.read(ROOT / "docker" / "cowrie" / "cowrie.cfg")
+    cowrie_config["honeypot"]["hostname"] = cfg.decoy.hostname
+    cowrie_config["ssh"]["auth_none_enabled"] = str(breadcrumb_config["gateway"]["authentication"] == "none").lower()
+    with (paths.root / "cowrie.cfg").open("w") as handle:
+        cowrie_config.write(handle)
     sidecar_env = {
         "UPSTREAM_HOST": "target",
         "UPSTREAM_PORT": "9090",
@@ -110,6 +121,8 @@ def build_override(
         "SWARMPOT_DECOY_USER": cfg.decoy.user,
         "SWARMPOT_DECOY_PASSWORD": cfg.decoy.password,
         "SIDECAR_LOG": "/logs/sidecar.jsonl",
+        "SWARMPOT_BREADCRUMB_CONFIG": "/config/breadcrumbs.json",
+        "SWARMPOT_BREADCRUMB_PROFILE": "/logs/breadcrumb_profile.json",
     }
     attacker_env = {
         "OPENROUTER_API_KEY": "${OPENROUTER_API_KEY:-}",
@@ -119,8 +132,8 @@ def build_override(
         "HTTPS_PROXY": "http://egress-proxy:3128",
         "HTTP_PROXY": "http://egress-proxy:3128",
         "ALL_PROXY": "http://egress-proxy:3128",
-        "NO_PROXY": "localhost,127.0.0.1,target,fileserver-01,cowrie,decoy,sidecar,egress-proxy",
-        "no_proxy": "localhost,127.0.0.1,target,fileserver-01,cowrie,decoy,sidecar,egress-proxy",
+        "NO_PROXY": f"localhost,127.0.0.1,target,{cfg.decoy.hostname},cowrie,sidecar,egress-proxy",
+        "no_proxy": f"localhost,127.0.0.1,target,{cfg.decoy.hostname},cowrie,sidecar,egress-proxy",
         "SWARMPOT_ATTACKER_INPUT": "/logs/attacker_input.json",
         "PYTHONPATH": "/opt/swarmpot",
     }
@@ -129,7 +142,8 @@ def build_override(
         "sidecar": {
             "image": f"swarmpot/sidecar:{IMAGE_TAG}",
             "environment": sidecar_env,
-            "volumes": [_volume(paths.sidecar, "/logs")],
+            "volumes": [_volume(paths.sidecar, "/logs"),
+                        _volume(paths.root / "breadcrumb_config.json", "/config/breadcrumbs.json", "ro")],
             "networks": {
                 "target_network": {},
                 "exposure_net": {"ipv4_address": SIDECAR_IP},
@@ -171,9 +185,11 @@ def build_override(
             "volumes": [
                 _volume(paths.cowrie_log, "/var/log/cowrie"),
                 _volume(paths.cowrie_state, "/var/lib/cowrie"),
+                _volume(paths.root / "cowrie.cfg", "/etc/cowrie/cowrie.cfg", "ro"),
+                _volume(paths.root / "cowrie.cfg", "/cowrie/etc/cowrie.cfg", "ro"),
             ],
             "networks": {
-                "exposure_net": {"aliases": [COWRIE_ALIAS]},
+                "exposure_net": {"aliases": [cfg.decoy.hostname]},
                 "decoy_net": {},
             },
             "depends_on": {"decoy": {"condition": "service_started"}},
@@ -221,8 +237,8 @@ def build_override(
             "profiles": ["attacker"],
             "depends_on": {
                 "sidecar": {"condition": "service_healthy"},
-                "cowrie": {"condition": "service_healthy"},
                 "egress-proxy": {"condition": "service_healthy"},
+                **({"cowrie": {"condition": "service_healthy"}} if arm.decoy else {}),
             },
             "restart": "no",
         },
@@ -236,6 +252,7 @@ def build_override(
     return {
         "services": services,
         "networks": {
+            "target_network": {"internal": True},
             "exposure_net": {
                 "internal": True,
                 "ipam": {"config": [{"subnet": EXPOSURE_SUBNET}]},

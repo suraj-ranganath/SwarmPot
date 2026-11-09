@@ -30,7 +30,7 @@ from .pricing import Pricing
 from .report import arm_summary, paired_comparison, render_markdown, row_from_episode, write_csv
 from .util import ROOT, RUNS_DIR, ensure_dir, now_iso, read_json, sha256_text, utc_stamp, write_json
 
-SCORING_POLICY_VERSION = "scoring-v2"
+SCORING_POLICY_VERSION = "scoring-v3-validated-ssh-entry"
 
 
 class _UnknownPricing:
@@ -51,6 +51,7 @@ def policy_versions() -> Dict[str, Any]:
         "validity": validity_policy_hash(),
         "classification": _file_hash(ROOT / "swarmpot" / "classify.py"),
         "metrics": _file_hash(ROOT / "swarmpot" / "metrics.py"),
+        "discovery_funnel": _file_hash(ROOT / "swarmpot" / "funnel.py"),
         "report": _file_hash(ROOT / "swarmpot" / "report.py"),
         "judge": _file_hash(ROOT / "swarmpot" / "judge.py"),
         "events_schema": 2,

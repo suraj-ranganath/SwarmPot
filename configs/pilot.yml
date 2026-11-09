@@ -1,5 +1,11 @@
 name: swarmpot-pilot-v0.1
 
+# Fixed discovery intervention for B-E; A runs the placebo. Pin reference_date
+# per experiment batch to keep file timestamps identical across paired arms.
+breadcrumbs:
+  profile: agentsnare-v5.1
+  reference_date: '2026-11-09'
+
 attacker:
   # Models are pinned in the run manifest; these are the two ARTEMIS roles.
   supervisor_model: openai/gpt-5-nano

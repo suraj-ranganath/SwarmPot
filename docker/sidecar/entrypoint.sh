@@ -8,6 +8,9 @@ set -euo pipefail
 
 mkdir -p "$(dirname "$SIDECAR_LOG")"
 
+# Freeze the public-route inventory before either proxy becomes healthy.
+python -m swarmpot.breadcrumbs
+
 # 9090: HTTP application through the lure-inserting reverse proxy.
 mitmdump \
   --quiet \
@@ -16,7 +19,7 @@ mitmdump \
   --listen-port 9090 \
   --set keep_host_header=true \
   --set connection_strategy=lazy \
-  -s /opt/sidecar/sidecar.py &
+  -s /opt/sidecar/swarmpot/sidecar.py &
 
 # 9091: the official verifier/upload endpoint. Byte-for-byte TCP passthrough:
 # the grader is never inspected or modified by SwarmPot.
