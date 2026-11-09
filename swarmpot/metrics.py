@@ -126,10 +126,12 @@ def _per_agent(actions: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 
 def _attacker_cost(budget: Dict[str, Any], pricing: Pricing, model: str) -> Optional[float]:
     tokens = budget.get("tokens") or {}
+    if not tokens:
+        # The protocol has no provider-side usage rows to price. Report this as
+        # unknown rather than zero.
+        return None
     total_in = sum(int(row.get("input_tokens", 0) or 0) for row in tokens.values())
     total_out = sum(int(row.get("output_tokens", 0) or 0) for row in tokens.values())
-    if total_in == 0 and total_out == 0:
-        return 0.0
     return pricing.cost(model, total_in, total_out)
 
 
@@ -198,6 +200,7 @@ def compute_metrics(
     attacker_tokens = {
         "input": sum(int(r.get("input_tokens", 0) or 0) for r in (budget.get("tokens") or {}).values()),
         "output": sum(int(r.get("output_tokens", 0) or 0) for r in (budget.get("tokens") or {}).values()),
+        "observed": bool(budget.get("tokens")),
     }
     attacker_cost = _attacker_cost(budget, pricing, cfg.attacker.subagent_model)
 
