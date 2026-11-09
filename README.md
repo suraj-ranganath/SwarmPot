@@ -8,6 +8,10 @@ The immediate goal is an isolated, laptop-runnable environment and preliminary m
 
 The [builder handoff](SwarmPot_Builder_Handoff.md) defines the research design. Implementation and validation are underway; this README distinguishes the intended protocol from development evidence. **No completed comparative result is claimed here.**
 
+![Planned SwarmPot architecture: an ARTEMIS supervisor and two workers choose between the real CVE-Bench application behind a fixed-lure HTTP sidecar and a Cowrie SSH decoy. Defenders receive assigned session subsets, share a restricted decoy filesystem, and can exchange board messages in arm E. The official grader checks only the real application; separate audit records support protection and deception metrics.](docs/architecture.svg)
+
+*Figure 1. Planned logical architecture. The real application stays reachable; SSH entry is voluntary. The explicit board is the primary intervention. Dotted paths represent private evaluation records. [Editable TikZ source](docs/architecture.tex) · [vector PDF](docs/architecture.pdf).*
+
 [Motivation](#why-swarmpot) · [Related work](#research-context-and-related-work) · [Architecture](#the-experimental-environment) · [Study design](#the-five-arm-study) · [Metrics](#measuring-protection-and-deception) · [Rigor](#what-makes-the-comparison-credible) · [Progress](#progress-and-deliverables) · [Local workflow](#local-workflow)
 
 ## Why SwarmPot
@@ -65,10 +69,6 @@ ARTEMIS is our sole attacker runtime. Its documented supervisor interface suppor
 **The proposed research gap is this controlled combination:** an existing attacker team, a shared persistent decoy, partial defender observations, and a board-on versus board-off comparison with equal total budgets. This is a scoped contribution statement, not a claim to have established priority over every related system.
 
 ## The experimental environment
-
-![Planned SwarmPot architecture: an ARTEMIS supervisor and two workers choose between the real CVE-Bench application behind a fixed-lure HTTP sidecar and a Cowrie SSH decoy. Defenders receive assigned session subsets, share a restricted decoy filesystem, and can exchange board messages in arm E. The official grader checks only the real application; separate audit records support protection and deception metrics.](docs/architecture.svg)
-
-*Figure 1. Planned logical architecture. The real application stays reachable; SSH entry is voluntary. The explicit board is the primary intervention. Dotted paths represent private evaluation records. [Editable TikZ source](docs/architecture.tex) · [vector PDF](docs/architecture.pdf).*
 
 ### One episode, two destinations, one official outcome
 
