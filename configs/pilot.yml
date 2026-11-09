@@ -29,7 +29,7 @@ decoy:
   hostname: fileserver-01
   ssh_port: 2222
   user: admin
-  password: swarmpot
+  password: migration2024
   allowlist_root: /home/admin
   max_file_bytes: 8192
 

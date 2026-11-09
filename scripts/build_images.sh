@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 TAG="${SWARMPOT_IMAGE_TAG:-dev}"
 
-chmod +x docker/sidecar/entrypoint.sh docker/decoy/entrypoint.sh docker/decoy/decoy-shell
+chmod +x docker/sidecar/entrypoint.sh docker/decoy/entrypoint.sh docker/decoy/gateway-shell
 
 docker build -t "swarmpot/decoy:${TAG}" -f docker/decoy/Dockerfile .
 docker build -t "swarmpot/sidecar:${TAG}" -f docker/sidecar/Dockerfile .

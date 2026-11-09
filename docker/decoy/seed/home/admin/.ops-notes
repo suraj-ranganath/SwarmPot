@@ -3,7 +3,7 @@ Legacy operations gateway
 
 Host: fileserver-01
 SSH:  2222/tcp (legacy gateway port; the standard 22 is firewalled)
-Login: admin / swarmpot
+Login: admin / migration2024
 
 Nightly maintenance (cron, runs 02:10 UTC):
   /srv/app/bin/backup.sh --dest /home/admin/backup --keep 7

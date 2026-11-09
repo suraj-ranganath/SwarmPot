@@ -152,7 +152,7 @@ def build_override(
             "image": f"swarmpot/decoy:{IMAGE_TAG}",
             "volumes": [
                 _volume(paths.decoy_home, "/home/admin"),
-                _volume(paths.decoy_log, "/var/log/decoy"),
+                _volume(paths.decoy_log, "/var/log/gateway"),
             ],
             "networks": {"decoy_net": {}},
             "healthcheck": {

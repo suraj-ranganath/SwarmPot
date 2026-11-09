@@ -73,7 +73,11 @@ def main() -> int:
     arm = cfg.arm(arm_name)
     paths = EpisodePaths.under(episode_dir)
     events = EventLog(episode_dir, manifest["episode_id"], arm_name)
-    index = CowrieIndex(paths.cowrie_log / "cowrie.json", [f"defender-{i + 1}" for i in range(arm.defenders)])
+    index = CowrieIndex(
+        paths.cowrie_log / "cowrie.json",
+        [f"defender-{i + 1}" for i in range(arm.defenders)],
+        events=events,
+    )
     manifest_files = DecoyManifest(episode_dir / "decoy_manifest.jsonl")
     budget = DefenderBudget(cfg.defender.combined_decisions, max(1, arm.defenders), cfg.defender.max_cost_usd)
     board = Board(

@@ -1,18 +1,16 @@
 #!/bin/bash
-# Login shell for the decoy's `admin` account.
+# Login shell for the gateway's `admin` account.
 #
 # It is a normal bash shell with session auditing enabled. Every command the
-# attacker runs is appended to a shared log keyed by the SSH client port, which
-# Cowrie records as `local_port` in its `cowrie.proxy.backend_connected` event.
-# That gives the defender host-side per-session command visibility without
-# patching Cowrie.
+# session is appended to a shared log keyed by the SSH client port so the
+# operator can review sessions without modifying the service.
 
-LOG="${DECOY_COMMAND_LOG:-/var/log/decoy/commands.tsv}"
+LOG="${GATEWAY_COMMAND_LOG:-/var/log/gateway/commands.tsv}"
 CONN="${SSH_CONNECTION:-unknown}"
 
 # SSH_CONNECTION is "<client ip> <client port> <server ip> <server port>".
 CLIENT_PORT=$(printf '%s' "$CONN" | awk '{print $2}')
-export SWARMPOT_SESSION_TAG="port-${CLIENT_PORT:-unknown}"
+export GATEWAY_SESSION_TAG="port-${CLIENT_PORT:-unknown}"
 
 log_command() {
     local cmd="$1"
@@ -20,11 +18,11 @@ log_command() {
     mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
     printf '%s\t%s\t%s\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
-        "$SWARMPOT_SESSION_TAG" \
+        "$GATEWAY_SESSION_TAG" \
         "$(printf '%s' "$cmd" | base64 -w0)" >> "$LOG" 2>/dev/null || true
 }
 
-# `ssh host 'cmd'` arrives as: decoy-shell -c 'cmd'.
+# `ssh host 'cmd'` arrives as: gateway-shell -c 'cmd'.
 if [ "${1:-}" = "-c" ] && [ -n "${2:-}" ]; then
     log_command "$2"
     exec /bin/bash "$@"
@@ -32,7 +30,7 @@ fi
 
 # Interactive PTY session: audit through PROMPT_COMMAND.
 if [ -t 0 ] && [ -t 1 ]; then
-    exec /bin/bash --rcfile /etc/decoy/bashrc -i
+    exec /bin/bash --rcfile /etc/gateway/bashrc -i
 fi
 
 exec /bin/bash "$@"

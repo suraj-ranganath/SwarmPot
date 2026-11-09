@@ -1,4 +1,4 @@
-# Disposable decoy SSH backend. Real shell, real shared filesystem, no egress.
+# Disposable gateway SSH backend. Real shell, real shared filesystem, no egress.
 Port 22
 AddressFamily inet
 ListenAddress 0.0.0.0

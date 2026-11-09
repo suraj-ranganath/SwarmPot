@@ -7,8 +7,10 @@ and defender team, one budget, and one official grader verdict.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -33,6 +35,18 @@ from .defenders import (
     seed_decoy_home,
 )
 from .events import EventLog
+from .isolation import write_reset_manifest
+from .ledger import (
+    begin_attempt,
+    classify_validity,
+    config_fingerprint,
+    finalize_attempt,
+    load_ledger,
+    policy_hash,
+    seed_inventory,
+    seed_inventory_hash,
+    update_attempt,
+)
 from .metrics import compute_metrics
 from .overrides import (
     EpisodePaths,
@@ -87,6 +101,26 @@ def compose(
 ) -> subprocess.CompletedProcess:
     cmd = bench.compose_cmd(cve, project, override, seed) + tail
     return _run(cmd, env=bench.env(seed), timeout=timeout, check=check)
+
+
+def _docker_version() -> Optional[str]:
+    proc = _run(["docker", "version", "--format", "{{.Server.Version}}"], timeout=30, check=False)
+    return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+
+
+def _file_sha256(path: Path) -> Optional[str]:
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _previous_attempt_id() -> Optional[str]:
+    records = load_ledger()
+    for record in reversed(records):
+        if record.get("event") == "attempt":
+            return record.get("attempt_id")
+    return None
 
 
 def _image_digests() -> Dict[str, Any]:
@@ -172,10 +206,16 @@ def _write_manifest(
     prompt: str,
 ) -> Dict[str, Any]:
     snapshot = dump_task_snapshot(cve, CveBench(cfg.cvebench), paths.root)
+    seed_rows = seed_inventory(ROOT / "docker" / "decoy" / "seed" / "home" / "admin")
     manifest = {
-        "schema": 1,
+        "schema": 2,
         "episode_id": episode_id,
+        "attempt_id": episode_id,
         "created_at": now_iso(),
+        "config_id": config_fingerprint(cfg, cve, arm_name, prompt),
+        "config_sha256": hashlib.sha256(
+            json.dumps(cfg.raw, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest(),
         "cve": cve,
         "arm": arm_name,
         "repetition": rep,
@@ -218,7 +258,21 @@ def _write_manifest(
         "upstream": CveBench(cfg.cvebench).host_pin(),
         "vendor_lock": read_json(ROOT / "vendor.lock.json", default={}),
         "images": _image_digests(),
-        "prompt_sha256": __import__("hashlib").sha256(prompt.encode()).hexdigest(),
+        "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(),
+        "seed_inventory_sha256": seed_inventory_hash(seed_rows),
+        "seed_inventory": seed_rows,
+        "runtime": {
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "docker_server": _docker_version(),
+        },
+        "policy_versions": {
+            "validity": policy_hash(),
+            "classification": _file_sha256(ROOT / "swarmpot" / "classify.py"),
+            "metrics": _file_sha256(ROOT / "swarmpot" / "metrics.py"),
+            "events_schema": 2,
+        },
     }
     manifest.update(snapshot)
     write_json(path / "manifest.json", manifest)
@@ -351,16 +405,31 @@ def _prepare_stack(
     keep: bool,
     lure_override: Optional[bool] = None,
     run_probes: bool = True,
+    retry_of: Optional[str] = None,
 ) -> Dict[str, Any]:
     arm = cfg.arm(arm_name)
     episode_id = _episode_id(cve, arm_name, rep)
     project = _project_name(episode_id)
     seed = _seed_for(cve, rep)
     paths = EpisodePaths.under(RUNS_DIR / episode_id).create()
-    events = EventLog(paths.root, episode_id, arm_name)
+    events = EventLog(paths.root, episode_id, arm_name, attempt_id=episode_id)
     prompt = bench.prompt(cve)
     egress_allow = str(cfg.raw.get("egress", {}).get("allow", DEFAULT_EGRESS_ALLOW))
     lure_enabled = bool(arm.decoy) if lure_override is None else bool(lure_override)
+
+    # The ledger entry exists before any container starts, so launch failures
+    # and never-started attempts remain visible.
+    config_id = config_fingerprint(cfg, cve, arm_name, prompt)
+    begin_attempt(
+        paths.root,
+        episode_id,
+        cve,
+        arm_name,
+        rep,
+        config_id,
+        parent_attempt_id=retry_of,
+        note="retry" if retry_of else None,
+    )
 
     manifest = create_manifest(
         cfg,
@@ -401,6 +470,21 @@ def _prepare_stack(
     events.lifecycle("reset_start")
     bench.down(cve, project, override=override_path, secret_seed=seed)
     events.lifecycle("reset_done")
+    update_attempt(paths.root, episode_id, "reset", "reset_done")
+    write_reset_manifest(
+        paths.root,
+        episode_id=episode_id,
+        compose_project=project,
+        paths=paths,
+        previous_attempt_id=retry_of,
+        seed_rows=manifest.get("seed_inventory", []),
+        lure_enabled=lure_enabled,
+        decoy_enabled=arm.decoy,
+        reset_command=(
+            "docker compose down --volumes --remove-orphans "
+            f"--project-name {project}"
+        ),
+    )
 
     try:
         events.lifecycle("infra_up_start", services=services)
@@ -418,8 +502,20 @@ def _prepare_stack(
             events.lifecycle("trusted_probe", **probes["reachability"])
             if probes["reachability"]["returncode"] != 0:
                 raise EpisodeError(f"attacker-path reachability probe failed: {probes['reachability']}")
-    except Exception:
-        events.lifecycle("infra_failed")
+        update_attempt(paths.root, episode_id, "infra", "started", started=True)
+    except Exception as exc:
+        events.lifecycle("infra_failed", error=repr(exc))
+        update_attempt(paths.root, episode_id, "infra", "failed", error=repr(exc))
+        finalize_attempt(
+            paths.root,
+            episode_id,
+            status="failed",
+            valid=False,
+            exclusion_reason="infra_failure",
+            grader_status=None,
+            attacker_started=False,
+            error=repr(exc),
+        )
         bench.down(cve, project, override=override_path, secret_seed=seed)
         raise
 
@@ -447,6 +543,8 @@ def _prepare_stack(
         "lure_enabled": lure_enabled,
         "decoy_manifest": decoy_manifest,
         "keep": keep,
+        "attempt_id": episode_id,
+        "config_id": config_id,
     }
     return state
 
@@ -525,6 +623,14 @@ def _run_attacker(state: Dict[str, Any]) -> Dict[str, Any]:
         raise EpisodeError("attacker container did not start")
     state["attacker_container"] = container_id
     events.lifecycle("attacker_started", container_id=container_id)
+    update_attempt(
+        state["paths"].root,
+        state["attempt_id"],
+        "attacker",
+        "attacker_started",
+        attacker_started=True,
+        container_id=container_id,
+    )
 
     wait_seconds = cfg.attacker.wall_clock_minutes * 60 + 300
     result = _wait_for_container(container_id, wait_seconds)
@@ -584,13 +690,15 @@ def run_episode(
     keep: bool = False,
     lure_override: Optional[bool] = None,
     run_probes: bool = True,
+    retry_of: Optional[str] = None,
 ) -> Dict[str, Any]:
     state = _prepare_stack(
-        cfg, CveBench(cfg.cvebench), cve, arm_name, rep, keep, lure_override, run_probes
+        cfg, CveBench(cfg.cvebench), cve, arm_name, rep, keep, lure_override, run_probes, retry_of
     )
     arm = state["arm"]
     events: EventLog = state["events"]
     paths: EpisodePaths = state["paths"]
+    attempt_id: str = state["attempt_id"]
 
     if arm.defenders and not (os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")):
         raise EpisodeError("defender arms need OPENROUTER_API_KEY or OPENAI_API_KEY")
@@ -613,65 +721,122 @@ def run_episode(
     team = None
     stop = None
     thread = None
-    if arm.defenders:
-        defender_ids = [f"defender-{i + 1}" for i in range(arm.defenders)]
-        index = CowrieIndex(
-            paths.cowrie_log / "cowrie.json",
-            defender_ids,
-            # Cowrie's proxy mode already emits `cowrie.command.input` for both
-            # exec and interactive sessions, attributed to the Cowrie session.
-            # The decoy's own audit TSV is kept as an independent forensic trail
-            # (see decoy_log/commands.tsv) but is not merged here, which would
-            # double-count every command.
-            None,
-        )
-        team, stop, thread = _start_defenders(
-            cfg,
-            arm_name,
-            state["episode_id"],
-            paths,
-            events,
-            index,
-            state["decoy_manifest"],
-            budget,
-            board,
-            pricing,
-        )
-
     grader: Dict[str, Any] = {}
+    metrics: Dict[str, Any] = {}
+    interrupted = False
+    error_text: Optional[str] = None
+
     try:
-        _run_attacker(state)
+        if arm.defenders:
+            defender_ids = [f"defender-{i + 1}" for i in range(arm.defenders)]
+            index = CowrieIndex(
+                paths.cowrie_log / "cowrie.json",
+                defender_ids,
+                # Cowrie's proxy mode already emits `cowrie.command.input` for both
+                # exec and interactive sessions, attributed to the Cowrie session.
+                # The decoy's own audit TSV is kept as an independent forensic trail
+                # (see decoy_log/commands.tsv) but is not merged here, which would
+                # double-count every command.
+                None,
+                events=events,
+            )
+            team, stop, thread = _start_defenders(
+                cfg,
+                arm_name,
+                state["episode_id"],
+                paths,
+                events,
+                index,
+                state["decoy_manifest"],
+                budget,
+                board,
+                pricing,
+            )
+
+        try:
+            _run_attacker(state)
+        except KeyboardInterrupt:
+            interrupted = True
+            events.emit(
+                "system",
+                "interrupted",
+                status="interrupted",
+                reason="operator_interrupt",
+                payload={"stage": "attacker"},
+            )
+            raise
+        finally:
+            if stop is not None:
+                stop.set()
+            if thread is not None:
+                thread.join(timeout=45)
+
+            time.sleep(2)
+            if index is not None:
+                index.poll()
+            defender_state = _collect_defender_state(state, budget, board, index)
+
+            if interrupted:
+                events.lifecycle("grading_skipped", reason="interrupted")
+            else:
+                events.lifecycle("grading_start")
+                grader = state["bench"].grade(
+                    state["cve"], state["project"], override=state["override"], seed=state["seed"]
+                )
+                write_json(paths.root / "grader.json", grader)
+                events.grader(grader)
+                events.lifecycle("grading_done", status=grader.get("status"))
+                update_attempt(
+                    paths.root,
+                    attempt_id,
+                    "grading",
+                    "graded" if grader.get("status") is not None else "ungraded",
+                    grader_status=grader.get("status"),
+                    grader_path=str(paths.root / "grader.json"),
+                )
+
+            metrics = compute_metrics(
+                state,
+                grader=grader,
+                defender_state=defender_state,
+                pricing=pricing,
+            )
+            metrics["attempt"] = {
+                "attempt_id": attempt_id,
+                "status": "interrupted" if interrupted else "measured",
+                "interrupted": interrupted,
+            }
+            write_json(paths.root / "metrics.json", metrics)
+            events.lifecycle(
+                "metrics_written",
+                path=str(paths.root / "metrics.json"),
+                headline=metrics.get("headline"),
+            )
+    except BaseException as exc:  # noqa: BLE001 - preserve interrupted/failed attempts
+        error_text = repr(exc)
+        if isinstance(exc, KeyboardInterrupt):
+            interrupted = True
+        events.emit(
+            "system",
+            "attempt_error",
+            status="interrupted" if interrupted else "failed",
+            reason=type(exc).__name__,
+            payload={"error": error_text},
+        )
+        raise
     finally:
-        if stop is not None:
-            stop.set()
-        if thread is not None:
-            thread.join(timeout=45)
-
-        time.sleep(2)
-        if index is not None:
-            index.poll()
-        defender_state = _collect_defender_state(state, budget, board, index)
-
-        events.lifecycle("grading_start")
-        grader = state["bench"].grade(
-            state["cve"], state["project"], override=state["override"], seed=state["seed"]
-        )
-        write_json(paths.root / "grader.json", grader)
-        events.grader(grader)
-        events.lifecycle("grading_done", status=grader.get("status"))
-
-        metrics = compute_metrics(
-            state,
-            grader=grader,
-            defender_state=defender_state,
-            pricing=pricing,
-        )
-        write_json(paths.root / "metrics.json", metrics)
-
         if board is not None:
-            board.close()
+            try:
+                board.close()
+            except Exception:
+                pass
+        teardown_error: Optional[str] = None
         if not keep:
-            _teardown(state)
+            try:
+                _teardown(state)
+            except Exception as exc:  # never lose the ledger entry because of teardown
+                teardown_error = repr(exc)
+                events.emit("system", "teardown_error", status="failed", payload={"error": teardown_error})
         else:
             events.lifecycle(
                 "kept",
@@ -679,6 +844,35 @@ def run_episode(
                 override=str(state["override"]),
                 hint="docker compose ... down -v --remove-orphans",
             )
+
+        attacker_started = bool(state.get("attacker_container"))
+        completed = bool(metrics) and not interrupted and bool(grader)
+        validity = classify_validity(
+            started=True,
+            attacker_started=attacker_started,
+            completed=completed,
+            metrics_written=bool(metrics),
+            interrupted=interrupted,
+            grader_status=grader.get("status"),
+            config_mismatch=False,
+        )
+        status = "interrupted" if interrupted else ("completed" if validity["valid"] else "failed")
+        final = finalize_attempt(
+            paths.root,
+            attempt_id,
+            status=status,
+            valid=validity["valid"],
+            exclusion_reason=validity["exclusion_reason"],
+            grader_status=grader.get("status"),
+            attacker_started=attacker_started,
+            stop_reason=(metrics.get("audit", {}).get("attacker", {}) or {}).get("stop_reason")
+            if metrics
+            else None,
+            metrics=metrics or None,
+            error=error_text or teardown_error,
+        )
+        events.lifecycle("attempt_finalized", **{k: final.get(k) for k in ("status", "valid", "exclusion_reason")})
+
     return read_json(paths.root / "metrics.json", default={})
 
 
@@ -689,12 +883,21 @@ def prepare_episode(
     rep: int,
     lure_override: Optional[bool] = None,
     run_probes: bool = True,
+    retry_of: Optional[str] = None,
 ) -> Dict[str, Any]:
     state = _prepare_stack(
-        cfg, CveBench(cfg.cvebench), cve, arm_name, rep, True, lure_override, run_probes
+        cfg, CveBench(cfg.cvebench), cve, arm_name, rep, True, lure_override, run_probes, retry_of
+    )
+    update_attempt(
+        state["paths"].root,
+        state["attempt_id"],
+        "prepared",
+        "prepared",
+        artifact_dir=str(state["paths"].root),
     )
     return {
         "episode_id": state["episode_id"],
+        "attempt_id": state["attempt_id"],
         "episode_dir": str(state["paths"].root),
         "project": state["project"],
         "override": str(state["override"]),
@@ -717,6 +920,14 @@ def grade_episode(episode_dir: Path) -> Dict[str, Any]:
         seed=manifest["seed"],
     )
     write_json(episode_dir / "grader.json", grader)
+    update_attempt(
+        episode_dir,
+        manifest.get("attempt_id", manifest["episode_id"]),
+        "grading",
+        "graded" if grader.get("status") is not None else "ungraded",
+        grader_status=grader.get("status"),
+        grader_path=str(episode_dir / "grader.json"),
+    )
     return grader
 
 
@@ -746,6 +957,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         keep=args.keep,
         lure_override=args.lure,
         run_probes=not args.skip_probes,
+        retry_of=args.retry_of,
     )
     print(json.dumps(metrics.get("headline", metrics), indent=2, sort_keys=True))
     return 0
@@ -760,6 +972,7 @@ def _cmd_prepare(args: argparse.Namespace) -> int:
         args.rep,
         lure_override=args.lure,
         run_probes=not args.skip_probes,
+        retry_of=args.retry_of,
     )
     print(json.dumps(info, indent=2, sort_keys=True))
     return 0
@@ -834,6 +1047,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--no-lure", dest="lure", action="store_false")
     run.add_argument("--skip-probes", action="store_true")
     run.add_argument("--timeout-minutes", type=int)
+    run.add_argument("--retry-of", help="attempt id this run retries")
     run.set_defaults(func=_cmd_run)
 
     prepare = sub.add_parser("prepare", help="start an isolated stack without the attacker")
@@ -843,6 +1057,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--lure", dest="lure", action="store_true", default=None)
     prepare.add_argument("--no-lure", dest="lure", action="store_false")
     prepare.add_argument("--skip-probes", action="store_true")
+    prepare.add_argument("--retry-of", help="attempt id this run retries")
     prepare.set_defaults(func=_cmd_prepare)
 
     grade = sub.add_parser("grade", help="call the official grader on a live stack")

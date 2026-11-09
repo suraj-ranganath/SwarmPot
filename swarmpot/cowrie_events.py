@@ -3,9 +3,20 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .events import EventLog
 from .util import iter_jsonl_incremental
+
+SSH_TRACE_EVENTS = {
+    "cowrie.session.connect",
+    "cowrie.login.success",
+    "cowrie.login.failed",
+    "cowrie.command.input",
+    "cowrie.session.closed",
+    "cowrie.proxy.backend_connected",
+    "cowrie.proxy.backend_disconnected",
+}
 
 
 class CowrieIndex:
@@ -23,9 +34,14 @@ class CowrieIndex:
         log_path: Path,
         defenders: List[str],
         command_log_path: Optional[Path] = None,
+        *,
+        events: Optional[EventLog] = None,
+        on_assign: Optional[Callable[[str, str], None]] = None,
     ):
         self.log_path = Path(log_path)
         self.command_log_path = Path(command_log_path) if command_log_path else None
+        self.events = events
+        self.on_assign = on_assign
         self.defenders = list(defenders)
         self.offset = 0
         self.command_offset = 0
@@ -57,12 +73,23 @@ class CowrieIndex:
 
         if eventid == "cowrie.session.connect" and session:
             if session not in self.session_owner and self.defenders:
-                self.session_owner[session] = self.defenders[self._rr % len(self.defenders)]
+                owner = self.defenders[self._rr % len(self.defenders)]
+                self.session_owner[session] = owner
                 self._rr += 1
+                if self.events is not None:
+                    self.events.emit(
+                        "system",
+                        "session_owner",
+                        status="assigned",
+                        payload={"session": session, "owner": owner, "source": "round_robin"},
+                    )
+                if self.on_assign is not None:
+                    self.on_assign(session, owner)
 
         if session and session in self.session_owner:
             record["_owner"] = self.session_owner[session]
         self._append(record, added)
+        self._emit_ssh_trace(record)
 
         # A backend connection may have been logged in this same poll; drain any
         # commands that arrived before the mapping was visible.
@@ -99,8 +126,43 @@ class CowrieIndex:
     def _append(self, record: Dict[str, Any], added: List[Dict[str, Any]]) -> None:
         self._next += 1
         record["_seq"] = self._next
+        record.setdefault("_observation_id", f"cowrie-{record.get('session') or 'none'}-{self._next:06d}")
         self.rows.append(record)
         added.append(record)
+
+    def _emit_ssh_trace(self, record: Dict[str, Any]) -> None:
+        """Mirror session-level SSH facts into the correlated evaluator index.
+
+        Full payloads remain in cowrie.json; this index carries stable IDs and
+        just enough fields to link a defender observation to an SSH event.
+        """
+        if self.events is None:
+            return
+        eventid = record.get("eventid")
+        if eventid not in SSH_TRACE_EVENTS:
+            return
+        payload = {
+            "eventid": eventid,
+            "observation_id": record.get("_observation_id"),
+            "session": record.get("session"),
+            "src_ip": record.get("src_ip"),
+            "src_port": record.get("src_port"),
+            "username": record.get("username"),
+            "password": record.get("password"),
+            "input": record.get("input"),
+            "message": record.get("message"),
+            "local_port": record.get("local_port"),
+            "source": "cowrie.json",
+        }
+        emitted = self.events.emit(
+            "system",
+            "ssh_event",
+            tool=eventid,
+            target_class="decoy",
+            status="observed",
+            payload=payload,
+        )
+        record["_trace_event_id"] = emitted["event_id"]
 
     @staticmethod
     def _read_tsv(path: Path, offset: int) -> Tuple[List[Tuple[str, str, str]], int]:

@@ -19,7 +19,7 @@ LURE_ENABLED = os.environ.get("SWARMPOT_LURE_ENABLED", "0") == "1"
 DECOY_HOST = os.environ.get("SWARMPOT_DECOY_HOST", "fileserver-01")
 DECOY_PORT = os.environ.get("SWARMPOT_DECOY_PORT", "2222")
 DECOY_USER = os.environ.get("SWARMPOT_DECOY_USER", "admin")
-DECOY_PASSWORD = os.environ.get("SWARMPOT_DECOY_PASSWORD", "swarmpot")
+DECOY_PASSWORD = os.environ.get("SWARMPOT_DECOY_PASSWORD", "migration2024")
 LOG_PATH = Path(os.environ.get("SIDECAR_LOG", "/logs/sidecar.jsonl"))
 
 LURE_COMMENT = (

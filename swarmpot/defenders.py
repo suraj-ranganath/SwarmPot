@@ -20,7 +20,7 @@ from .cowrie_events import CowrieIndex
 from .defender_scheduler import DefenderTeam
 from .events import EventLog
 from .pricing import Pricing
-from .util import ensure_dir, now_iso, sha256_text, write_json
+from .util import ensure_dir, now_iso, sha256_bytes, sha256_text, write_json
 
 
 DEFENDER_SYSTEM_PROMPT = """You are the operator of an Internet-exposed SSH deception host.
@@ -215,6 +215,7 @@ class DecoyFiles:
         self.agent_id = agent_id
         self.events = events
         self._writes = 0
+        self._reads = 0
 
     def container_path(self, path: Path) -> str:
         rel = path.relative_to(self.root)
@@ -235,9 +236,14 @@ class DecoyFiles:
             raise ValueError(f"path is outside the decoy allowlist: {raw_path}")
         return resolved
 
+    def _read_counter(self) -> int:
+        self._reads += 1
+        return self._reads
+
     def read(self, raw_path: str = "/home/admin", max_bytes: int = 4096) -> Dict[str, Any]:
         path = self._resolve(raw_path)
         shown = self.container_path(path)
+        observation_id = f"obs-{self.agent_id}-{self._read_counter():04d}"
         if path.is_dir():
             entries = []
             for child in sorted(path.iterdir())[:100]:
@@ -245,19 +251,39 @@ class DecoyFiles:
                 if child.is_file():
                     entry["bytes"] = child.stat().st_size
                 entries.append(entry)
-            return {"path": shown, "type": "dir", "entries": entries}
+            listing_hash = sha256_text(json.dumps(entries, sort_keys=True))
+            return {
+                "path": shown,
+                "type": "dir",
+                "entries": entries,
+                "observation_id": observation_id,
+                "sha256": listing_hash,
+                "version": f"sha256:{listing_hash}",
+                "bytes": None,
+            }
         if path.is_symlink():
             raise ValueError("refusing to read a symlink")
-        data = path.read_bytes()[:max_bytes]
+        raw = path.read_bytes()
+        digest = sha256_bytes(raw)
         return {
             "path": shown,
             "type": "file",
-            "bytes": path.stat().st_size,
-            "truncated": path.stat().st_size > max_bytes,
-            "content": data.decode("utf-8", errors="replace"),
+            "bytes": len(raw),
+            "truncated": len(raw) > max_bytes,
+            "content": raw[:max_bytes].decode("utf-8", errors="replace"),
+            "observation_id": observation_id,
+            "sha256": digest,
+            "version": f"sha256:{digest}",
         }
 
-    def write(self, raw_path: str, content: str, *, request_id: Optional[str] = None) -> Dict[str, Any]:
+    def write(
+        self,
+        raw_path: str,
+        content: str,
+        *,
+        decision_event_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         if len(content.encode("utf-8")) > self.max_file_bytes:
             raise ValueError(f"content exceeds {self.max_file_bytes} bytes")
         path = self._resolve(raw_path)
@@ -266,6 +292,13 @@ class DecoyFiles:
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.is_symlink():
             raise ValueError("refusing to overwrite a symlink")
+        before: Optional[Dict[str, Any]] = None
+        if path.is_file():
+            try:
+                before_bytes = path.read_bytes()
+                before = {"sha256": sha256_bytes(before_bytes), "bytes": len(before_bytes)}
+            except OSError:
+                before = None
         fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".swarmpot-", text=True)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -282,6 +315,9 @@ class DecoyFiles:
             pass
         self._writes += 1
         shown = self.container_path(path)
+        after_sha256 = sha256_text(content)
+        before_sha256 = before["sha256"] if before else None
+        edit_id = f"edit-{self.agent_id}-{self._writes:04d}"
         record = self.manifest.add(
             {
                 "ts": now_iso(),
@@ -290,21 +326,48 @@ class DecoyFiles:
                 "path": shown,
                 "host_path": str(path),
                 "relpath": str(path.relative_to(self.root)),
-                "sha256": sha256_text(content),
+                "sha256": after_sha256,
+                "after_sha256": after_sha256,
+                "before_sha256": before_sha256,
                 "bytes": len(content.encode("utf-8")),
                 "tokens": extract_tokens(content),
                 "provenance_id": f"DEF-{self.agent_id}-{self._writes:04d}",
+                "edit_id": edit_id,
+                "decision_event_id": decision_event_id,
+                "request_id": request_id,
+                "commit_status": "committed",
             }
         )
         self.events.emit(
             "defender",
-            "decoy_write",
+            "decoy_edit",
             agent_id=self.agent_id,
             tool="write_decoy_file",
             target_class="n/a",
-            payload={"request_id": request_id, "path": shown, "bytes": record["bytes"], "provenance_id": record["provenance_id"]},
+            status="committed",
+            parent_event_id=decision_event_id,
+            refs=[request_id] if request_id else None,
+            payload={
+                "edit_id": edit_id,
+                "path": shown,
+                "before_sha256": before_sha256,
+                "after_sha256": after_sha256,
+                "bytes": record["bytes"],
+                "provenance_id": record["provenance_id"],
+                "commit_status": "committed",
+                "source_decision_event_id": decision_event_id,
+                "request_id": request_id,
+            },
         )
-        return {"ok": True, "path": shown, "provenance_id": record["provenance_id"]}
+        return {
+            "ok": True,
+            "path": shown,
+            "provenance_id": record["provenance_id"],
+            "edit_id": edit_id,
+            "before_sha256": before_sha256,
+            "after_sha256": after_sha256,
+            "bytes": record["bytes"],
+        }
 
 
 def _tool_schemas(board_enabled: bool) -> List[Dict[str, Any]]:
@@ -454,10 +517,24 @@ class DefenderAgent:
         self._request_id: Optional[str] = None
         self._explicit_board_seqs: List[int] = []
         self._retry_of: Optional[str] = None
+        self.prompt_version = f"defender-prompt-{sha256_text(DEFENDER_SYSTEM_PROMPT)[:12]}"
+        self._board_context_seqs: List[Any] = []
 
     # ----------------------------------------------------------------- tools
-    def _execute_tool(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_tool(
+        self,
+        name: str,
+        args: Dict[str, Any],
+        *,
+        decision_event_id: Optional[str] = None,
+        request_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         started = time.time()
+        extra: Dict[str, Any] = {}
+        status = "ok"
+        reason: Optional[str] = None
+        local_request_id = request_id or self._request_id
+        notify = bool(args.get("notify")) if name == "board_post" else False
         try:
             if self.stopped:
                 raise ValueError("defender stopped")
@@ -469,10 +546,39 @@ class DefenderAgent:
                     limit=int(args.get("limit", 40)),
                 )
                 result: Any = {"events": self._compact(rows), "latest_seq": self.index.latest_seq()}
+                extra = {
+                    "observed_observation_ids": [r.get("_observation_id") for r in rows if r.get("_observation_id")],
+                    "observed_trace_event_ids": [r.get("_trace_event_id") for r in rows if r.get("_trace_event_id")],
+                    "session_ids": sorted({r.get("session") for r in rows if r.get("session")}),
+                    "since_seq": int(args.get("since_seq", 0)),
+                }
+                status = "observed"
             elif name == "read_decoy_files":
                 result = self.decoy.read(args.get("path", "/home/admin"), int(args.get("max_bytes", 4096)))
+                extra = {
+                    "observation_id": result.get("observation_id"),
+                    "path": result.get("path"),
+                    "sha256": result.get("sha256"),
+                    "version": result.get("version"),
+                    "bytes": result.get("bytes"),
+                    "file_type": result.get("type"),
+                }
+                status = "observed"
             elif name == "write_decoy_file":
-                result = self.decoy.write(args["path"], args["content"], request_id=self._request_id)
+                result = self.decoy.write(
+                    args["path"],
+                    args["content"],
+                    decision_event_id=decision_event_id,
+                    request_id=local_request_id,
+                )
+                extra = {
+                    "edit_id": result.get("edit_id"),
+                    "path": result.get("path"),
+                    "before_sha256": result.get("before_sha256"),
+                    "after_sha256": result.get("after_sha256"),
+                    "bytes": result.get("bytes"),
+                }
+                status = "committed"
             elif name == "board_read" and self.board:
                 since = int(args.get("since_seq", 0))
                 messages = []
@@ -480,49 +586,101 @@ class DefenderAgent:
                     if len(json.dumps({"messages": messages + [row]})) > 6500:
                         break
                     messages.append(row)
-                result = {"messages": messages}
                 self._explicit_board_seqs = [row["seq"] for row in messages]
-                self.events.emit("defender", "board_read", agent_id=self.agent_id,
-                                 target_class="n/a", payload={"message_seqs": self._explicit_board_seqs,
-                                 "request_id": self._request_id, "since_seq": since})
+                self._board_context_seqs = [row["seq"] for row in messages] or self._board_context_seqs
+                result = {"messages": messages, "since_seq": since}
+                extra = {"message_seqs": [row["seq"] for row in messages], "since_seq": since}
+                self.events.emit(
+                    "defender",
+                    "board_read",
+                    agent_id=self.agent_id,
+                    target_class="n/a",
+                    status="observed",
+                    parent_event_id=decision_event_id,
+                    payload={
+                        "message_seqs": extra["message_seqs"],
+                        "request_id": local_request_id,
+                        "since_seq": since,
+                    },
+                )
+                status = "observed"
             elif name == "board_post" and self.board:
-                notify = args.get("notify", False)
-                if not isinstance(notify, bool):
+                if not isinstance(args.get("notify", False), bool):
                     raise ValueError("notify must be a boolean")
                 body = str(args.get("body", ""))[:2000]
                 if len(json.dumps(body)) > 5500:
                     raise ValueError("board body exceeds bounded context size")
-                post = self.board.post(self.agent_id, body,
-                                       notify_to=self.teammate_id if notify else None)
+                post = self.board.post(
+                    self.agent_id, body, notify_to=self.teammate_id if notify else None
+                )
+                result = post
+                extra = {
+                    "message_id": post.get("seq"),
+                    "body_sha256": sha256_text(body),
+                    "used": post.get("used"),
+                    "limit": post.get("limit"),
+                }
+                status = "committed"
                 self.events.emit(
                     "defender",
                     "board_post",
                     agent_id=self.agent_id,
                     tool="board_post",
                     target_class="n/a",
-                    payload={**post, "request_id": self._request_id},
+                    status="committed",
+                    parent_event_id=decision_event_id,
+                    payload={**post, "message_id": post.get("seq"),
+                             "body_sha256": sha256_text(body), "request_id": local_request_id},
                 )
                 if notify:
-                    self.events.emit("defender", "board_notification", agent_id=self.agent_id,
-                                     target_class="n/a", payload={
-                                         "message_seqs": [post["seq"]], "origin": self.agent_id,
-                                         "recipient": self.teammate_id,
-                                         "status": "queued" if self.teammate_id else "denied",
-                                         "reason": None if self.teammate_id else "no_teammate",
-                                         "request_id": self._request_id,
-                                     })
-                result = post
+                    self.events.emit(
+                        "defender",
+                        "board_notification",
+                        agent_id=self.agent_id,
+                        target_class="n/a",
+                        status="queued" if self.teammate_id else "denied",
+                        reason=None if self.teammate_id else "no_teammate",
+                        payload={
+                            "message_seqs": [post["seq"]], "origin": self.agent_id,
+                            "recipient": self.teammate_id,
+                            "status": "queued" if self.teammate_id else "denied",
+                            "reason": None if self.teammate_id else "no_teammate",
+                            "request_id": local_request_id,
+                        },
+                    )
             else:
                 result = {"error": f"unknown or unavailable tool: {name}"}
-            ok = "error" not in result
-        except (ValueError, KeyError, TypeError, BoardBudgetExceeded, OSError) as exc:
+                status = "denied"
+                reason = "unknown_or_unavailable_tool"
+        except BoardBudgetExceeded as exc:
             result = {"error": str(exc)}
-            ok = False
-        if name == "board_post" and args.get("notify") is True and "error" in result:
-            self.events.emit("defender", "board_notification", agent_id=self.agent_id,
-                             target_class="n/a", payload={"status": "denied", "reason": result["error"],
-                             "origin": self.agent_id, "recipient": self.teammate_id,
-                             "message_seqs": [], "request_id": self._request_id})
+            status = "denied"
+            reason = "board_budget_exceeded"
+        except ValueError as exc:
+            result = {"error": str(exc)}
+            status = "denied"
+            reason = "allowlist_or_validation"
+        except (KeyError, OSError, TypeError) as exc:
+            result = {"error": str(exc)}
+            status = "error"
+            reason = type(exc).__name__
+        if name == "board_post" and notify and "error" in result:
+            self.events.emit(
+                "defender",
+                "board_notification",
+                agent_id=self.agent_id,
+                target_class="n/a",
+                status="denied",
+                reason=str(result.get("error")),
+                payload={
+                    "status": "denied",
+                    "reason": result.get("error"),
+                    "origin": self.agent_id,
+                    "recipient": self.teammate_id,
+                    "message_seqs": [],
+                    "request_id": local_request_id,
+                },
+            )
         elapsed_ms = round((time.time() - started) * 1000, 1)
         self.events.emit(
             "defender",
@@ -530,18 +688,96 @@ class DefenderAgent:
             agent_id=self.agent_id,
             tool=name,
             target_class="n/a",
-            payload={"request_id": self._request_id, "args": args, "ok": ok, "result_preview": json.dumps(result)[:1200], "elapsed_ms": elapsed_ms},
+            status=status,
+            reason=reason,
+            parent_event_id=decision_event_id,
+            refs=[local_request_id] if local_request_id else None,
+            payload={
+                "request_id": local_request_id,
+                "args": args,
+                "ok": status in ("observed", "committed"),
+                "status": status,
+                "reason": reason,
+                "result_preview": json.dumps(result)[:1200],
+                "elapsed_ms": elapsed_ms,
+                "source_decision_event_id": decision_event_id,
+                **extra,
+            },
         )
         return result
 
     @staticmethod
     def _compact(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        keys = ("_seq", "timestamp", "eventid", "session", "src_ip", "username", "password", "input", "message", "cwd")
+        keys = (
+            "_seq", "_observation_id", "_trace_event_id", "_owner",
+            "timestamp", "eventid", "session", "src_ip", "username",
+            "password", "input", "message", "cwd",
+        )
         out = []
         for row in rows:
             item = {k: row.get(k) for k in keys if row.get(k) is not None}
             out.append(item)
         return out
+
+    def _persist_call(
+        self,
+        call_index: int,
+        request: Dict[str, Any],
+        response: Any,
+        *,
+        attempts: List[str],
+        started_at: str,
+        completed_at: str,
+        latency_s: float,
+    ) -> Dict[str, Any]:
+        import hashlib
+
+        message = response.choices[0].message
+        usage = response.usage
+        record = {
+            "schema_version": 1,
+            "call_index": call_index,
+            "agent_id": self.agent_id,
+            "model_requested": self.model,
+            "model_served": getattr(response, "model", None),
+            "provider": "openrouter",
+            "request_id": getattr(response, "id", None),
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "latency_s": round(latency_s, 3),
+            "attempts": attempts,
+            "request": {
+                "messages": request.get("messages"),
+                "tools": request.get("tools"),
+                "tool_choice": request.get("tool_choice"),
+                "temperature": request.get("temperature"),
+                "max_tokens": request.get("max_tokens"),
+                "extra_body": request.get("extra_body"),
+            },
+            "response": {
+                "content": message.content,
+                "tool_calls": [
+                    {"id": c.id, "name": c.function.name, "arguments": c.function.arguments}
+                    for c in (message.tool_calls or [])
+                ],
+                "finish_reason": response.choices[0].finish_reason,
+            },
+            "usage": {
+                "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+                "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+                "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+                "cached_tokens": int(
+                    getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0
+                ),
+            },
+            "prompt_version": self.prompt_version,
+            "system_prompt_sha256": sha256_text(DEFENDER_SYSTEM_PROMPT),
+            "tools_sha256": sha256_text(json.dumps(_tool_schemas(self.board is not None), sort_keys=True)),
+        }
+        path = ensure_dir(self.session_dir / "decisions") / f"{call_index:04d}.json"
+        write_json(path, record)
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        return {"payload_ref": str(path), "payload_sha256": digest, "record": record}
 
     # ------------------------------------------------------------------ loop
     def step(self, trigger: str, new_rows: List[Dict[str, Any]]) -> bool:
@@ -577,6 +813,8 @@ class DefenderAgent:
         if len(self.history) > 30:
             self.history = self.history[:2] + self.history[-28:]
         started = time.time()
+        started_at = now_iso()
+        attempts: List[str] = []
         request: Dict[str, Any] = {
             "model": self.model,
             "messages": self.history,
@@ -594,7 +832,9 @@ class DefenderAgent:
                          budget=self.budget.snapshot())
         try:
             response = self.client.chat.completions.create(**request)
+            attempts.append("ok")
         except Exception as exc:
+            attempts.append(repr(exc))
             self.budget.record_failed_request(self.agent_id)
             self._retry_of = self._request_id
             self.events.emit(
@@ -602,7 +842,11 @@ class DefenderAgent:
                 "llm_error",
                 agent_id=self.agent_id,
                 target_class="n/a",
-                payload={"error": repr(exc), "trigger": trigger, "request_id": self._request_id},
+                status="error",
+                reason="provider_error",
+                payload={"error": repr(exc), "attempts": attempts, "trigger": trigger,
+                         "request_id": self._request_id,
+                         "request_sha256": sha256_text(json.dumps(self.history, sort_keys=True, default=str))},
                 usage={"input_tokens": None, "output_tokens": None, "cost_usd": None, "reason": "provider_error"},
                 budget=self.budget.snapshot(),
             )
@@ -629,9 +873,20 @@ class DefenderAgent:
         usage = response.usage
         input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
         output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+        cached_tokens = int(getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0)
         cost = self.pricing.cost(self.model, input_tokens, output_tokens)
         self.budget.record_usage(self.agent_id, input_tokens, output_tokens, cost)
 
+        call = self._persist_call(
+            self.decisions,
+            request,
+            response,
+            attempts=attempts,
+            started_at=started_at,
+            completed_at=now_iso(),
+            latency_s=time.time() - started,
+        )
+        record = call["record"]
         message = response.choices[0].message
         assistant_entry: Dict[str, Any] = {"role": "assistant", "content": message.content or ""}
         if message.tool_calls:
@@ -645,6 +900,52 @@ class DefenderAgent:
             ]
         self.history.append(assistant_entry)
 
+        board_context = sorted(set(list(message_seqs) + list(self._board_context_seqs)))
+        observation_ids = [r.get("_observation_id") for r in new_rows if r.get("_observation_id")]
+        trace_ids = [r.get("_trace_event_id") for r in new_rows if r.get("_trace_event_id")]
+        decision_event = self.events.emit(
+            "defender",
+            "llm_decision",
+            agent_id=self.agent_id,
+            tool="chat.completions",
+            target_class="n/a",
+            status="ok",
+            refs=[x for x in (trace_ids + board_context) if x],
+            payload={
+                "request_id": self._request_id,
+                "provider_request_id": record["request_id"],
+                "trigger": trigger,
+                "content": (message.content or "")[:2000],
+                "tool_names": [c.function.name for c in (message.tool_calls or [])],
+                "latency_s": round(time.time() - started, 3),
+                "event_latency_s": round(latency, 2),
+                "model_requested": self.model,
+                "model_served": record["model_served"],
+                "provider": "openrouter",
+                "prompt_version": self.prompt_version,
+                "payload_ref": call["payload_ref"],
+                "payload_sha256": call["payload_sha256"],
+                "request_sha256": sha256_text(json.dumps(request, sort_keys=True, default=str)),
+                "attempts": attempts,
+                "retries": max(0, len(attempts) - 1),
+                "observation_ids": observation_ids,
+                "trace_event_ids": trace_ids,
+                "board_context_message_seqs": board_context,
+            },
+            usage={
+                "model": record["model_served"] or self.model,
+                "requested_model": self.model,
+                "provider": "openrouter",
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cached_tokens": cached_tokens,
+                "cost_usd": cost,
+                "cost_known": cost is not None,
+                "payload_ref": call["payload_ref"],
+            },
+            budget=self.budget.snapshot(),
+        )
+
         tool_results = []
         if message.tool_calls:
             for call in message.tool_calls:
@@ -652,7 +953,12 @@ class DefenderAgent:
                     args = json.loads(call.function.arguments or "{}")
                 except json.JSONDecodeError:
                     args = {}
-                result = self._execute_tool(call.function.name, args)
+                result = self._execute_tool(
+                    call.function.name,
+                    args,
+                    decision_event_id=decision_event["event_id"],
+                    request_id=self._request_id,
+                )
                 tool_results.append(result)
                 self.history.append(
                     {
@@ -666,30 +972,5 @@ class DefenderAgent:
                 "role": "user",
                 "content": "Tool results are above. If you acted, briefly state what changed for the record.",
             }
-        )
-
-        elapsed = time.time() - started
-        self.events.emit(
-            "defender",
-            "llm_decision",
-            agent_id=self.agent_id,
-            tool="chat.completions",
-            target_class="n/a",
-            payload={
-                "request_id": self._request_id,
-                "board_context_message_seqs": message_seqs,
-                "trigger": trigger,
-                "content": (message.content or "")[:2000],
-                "tool_names": [c.function.name for c in (message.tool_calls or [])],
-                "latency_s": round(elapsed, 2),
-                "event_latency_s": round(latency, 2),
-            },
-            usage={
-                "model": self.model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "cost_usd": cost,
-            },
-            budget=self.budget.snapshot(),
         )
         return True

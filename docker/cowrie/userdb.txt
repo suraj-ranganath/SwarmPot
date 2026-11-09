@@ -1,6 +1,6 @@
 # Decoy gateway credentials. Any username/password in this file authenticates
 # at Cowrie; the backend account is separate and is never exposed to attackers.
-admin:x:swarmpot
+admin:x:migration2024
 root:x:!root
 root:x:!123456
 root:x:*

@@ -8,7 +8,7 @@ import json
 import random
 import statistics
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .util import RUNS_DIR, read_json, write_json
 
@@ -21,61 +21,77 @@ METRIC_FIELDS = (
     "defuse",
     "decoy_entry",
     "decoy_actions",
+    "decoy_reference_actions",
     "total_actions",
     "decoy_ssh_commands",
     "decoy_ssh_sessions",
+    "lure_exposures",
     "first_decoy_action",
 )
 
 
-def load_episodes(runs_dir: Path = RUNS_DIR) -> List[Dict[str, Any]]:
+def row_from_episode(manifest: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
+    headline = metrics.get("headline", {}) or {}
+    audit = metrics.get("audit", {}) or {}
+    attacker = audit.get("attacker", {}) or {}
+    defender = audit.get("defender", {}) or {}
+    budget = defender.get("budget") or {}
+    consistency = audit.get("consistency") or {}
+    return {
+        "episode_id": manifest.get("episode_id"),
+        "attempt_id": manifest.get("attempt_id") or manifest.get("episode_id"),
+        "cve": manifest.get("cve"),
+        "arm": manifest.get("arm"),
+        "repetition": manifest.get("repetition"),
+        "created_at": manifest.get("created_at"),
+        "real_success": headline.get("real_success"),
+        "grader_message": headline.get("real_success_message"),
+        "delay": headline.get("delay"),
+        "divert_per": headline.get("divert_per"),
+        "subdefuse": headline.get("subdefuse"),
+        "defuse": headline.get("defuse"),
+        "decoy_entry": headline.get("decoy_entry"),
+        "decoy_actions": headline.get("decoy_actions"),
+        "decoy_reference_actions": headline.get("decoy_reference_actions"),
+        "total_actions": headline.get("total_actions"),
+        "decoy_ssh_commands": headline.get("decoy_ssh_commands"),
+        "decoy_ssh_sessions": headline.get("decoy_ssh_sessions"),
+        "lure_exposures": headline.get("lure_exposures"),
+        "first_decoy_action": headline.get("first_decoy_action"),
+        "first_decoy_ts": headline.get("first_decoy_ts"),
+        "attacker_input_tokens": (attacker.get("tokens") or {}).get("input"),
+        "attacker_output_tokens": (attacker.get("tokens") or {}).get("output"),
+        "attacker_cost_usd": attacker.get("cost_usd"),
+        "attacker_wall_seconds": attacker.get("wall_seconds"),
+        "attacker_stop_reason": attacker.get("stop_reason"),
+        "defender_decisions": budget.get("decisions_used"),
+        "defender_cost_usd": budget.get("cost_usd"),
+        "defender_agents": defender.get("agents"),
+        "board_enabled": defender.get("board_enabled"),
+        "board_messages": defender.get("board_messages"),
+        "consistency_ok": consistency.get("ok") if isinstance(consistency, dict) else None,
+        # An episode whose attacker never started (setup error, missing
+        # dependency, etc.) must not be counted as an unsuccessful attack.
+        "valid": attacker.get("wall_seconds") is not None,
+    }
+
+
+def load_episodes(
+    runs_dir: Path = RUNS_DIR,
+    metrics_path_fn: Optional[Callable[[Path], Path]] = None,
+) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     for manifest_path in sorted(Path(runs_dir).glob("*/manifest.json")):
         manifest = read_json(manifest_path, default={}) or {}
-        metrics = read_json(manifest_path.parent / "metrics.json", default={}) or {}
+        metrics_path = (
+            metrics_path_fn(manifest_path.parent)
+            if metrics_path_fn is not None
+            else manifest_path.parent / "metrics.json"
+        )
+        metrics = read_json(metrics_path, default={}) or {}
         if not metrics:
             continue
-        headline = metrics.get("headline", {}) or {}
-        audit = metrics.get("audit", {}) or {}
-        attacker = audit.get("attacker", {}) or {}
-        defender = audit.get("defender", {}) or {}
-        budget = defender.get("budget") or {}
-        consistency = audit.get("consistency") or {}
-        row = {
-            "episode_id": manifest.get("episode_id"),
-            "cve": manifest.get("cve"),
-            "arm": manifest.get("arm"),
-            "repetition": manifest.get("repetition"),
-            "created_at": manifest.get("created_at"),
-            "real_success": headline.get("real_success"),
-            "grader_message": headline.get("real_success_message"),
-            "delay": headline.get("delay"),
-            "divert_per": headline.get("divert_per"),
-            "subdefuse": headline.get("subdefuse"),
-            "defuse": headline.get("defuse"),
-            "decoy_entry": headline.get("decoy_entry"),
-            "decoy_actions": headline.get("decoy_actions"),
-            "total_actions": headline.get("total_actions"),
-            "decoy_ssh_commands": headline.get("decoy_ssh_commands"),
-            "decoy_ssh_sessions": headline.get("decoy_ssh_sessions"),
-            "first_decoy_action": headline.get("first_decoy_action"),
-            "first_decoy_ts": headline.get("first_decoy_ts"),
-            "attacker_input_tokens": (attacker.get("tokens") or {}).get("input"),
-            "attacker_output_tokens": (attacker.get("tokens") or {}).get("output"),
-            "attacker_cost_usd": attacker.get("cost_usd"),
-            "attacker_wall_seconds": attacker.get("wall_seconds"),
-            "attacker_stop_reason": attacker.get("stop_reason"),
-            "defender_decisions": budget.get("decisions_used"),
-            "defender_cost_usd": budget.get("cost_usd"),
-            "defender_agents": defender.get("agents"),
-            "board_enabled": defender.get("board_enabled"),
-            "board_messages": defender.get("board_messages"),
-            "consistency_ok": consistency.get("ok") if isinstance(consistency, dict) else None,
-            # An episode whose attacker never started (setup error, missing
-            # dependency, etc.) must not be counted as an unsuccessful attack.
-            "valid": attacker.get("wall_seconds") is not None,
-        }
-        rows.append(row)
+        rows.append(row_from_episode(manifest, metrics))
     return rows
 
 
