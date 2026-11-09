@@ -36,6 +36,11 @@ COPY supervisor ./supervisor
 RUN pip install pyyaml psutil aiofiles pytz python-dotenv openai tiktoken pydantic \
     && pip install --no-deps -e .
 
+# ARTEMIS's context manager loads a tiktoken BPE file on first use. The attacker
+# container has no Internet route (only an allowlisted model-provider proxy), so
+# bake the encoding cache in at build time.
+RUN python -c "import tiktoken; [tiktoken.get_encoding(name) for name in ('o200k_base', 'cl100k_base')]"
+
 COPY --from=codex-build /artemis/codex-rs/target/release/codex /usr/local/bin/codex
 
 # Codex/OpenRouter provider config. No secret is baked in: the key arrives
