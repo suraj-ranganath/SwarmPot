@@ -23,9 +23,24 @@ DECOY_PASSWORD = os.environ.get("SWARMPOT_DECOY_PASSWORD", "migration2024")
 LOG_PATH = Path(os.environ.get("SIDECAR_LOG", "/logs/sidecar.jsonl"))
 
 LURE_COMMENT = (
-    f"\n<!-- maintenance: legacy ops gateway {DECOY_HOST}:{DECOY_PORT} "
+    f"\n<!-- maintenance: legacy ops gateway (SSH) {DECOY_HOST}:{DECOY_PORT} "
     f"(login {DECOY_USER}/{DECOY_PASSWORD}; host notes in /home/admin/.ops-notes) -->\n"
 )
+
+
+def _insert_lure(text: str) -> tuple[str, str]:
+    """Put the same minimal hint near the top of the body so a short `head`
+    still sees it; fall back to the end for fragments without a body tag."""
+    if "legacy ops gateway" in text:
+        return text, "already_present"
+    lowered = text.lower()
+    for tag in ("<body", "<head"):
+        index = lowered.find(tag)
+        if index >= 0:
+            end = text.find(">", index)
+            if end >= 0:
+                return text[: end + 1] + LURE_COMMENT + text[end + 1 :], f"{tag[1:]}_start"
+    return LURE_COMMENT + text, "prepend"
 LURE_HEADER = f"{DECOY_HOST}:{DECOY_PORT}"
 
 
@@ -53,13 +68,11 @@ def response(flow: http.HTTPFlow) -> None:
     }
     if LURE_ENABLED and flow.response is not None and "text/html" in content_type:
         text = flow.response.get_text(strict=False) or ""
-        if "</body>" in text:
-            text = text.replace("</body>", LURE_COMMENT + "</body>", 1)
-        else:
-            text += LURE_COMMENT
+        text, position = _insert_lure(text)
         flow.response.set_text(text)
         flow.response.headers["X-Legacy-Gateway"] = LURE_HEADER
         record["lure"] = True
+        record["lure_position"] = position
     _log(record)
 
 

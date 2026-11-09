@@ -47,9 +47,9 @@ COPY --from=codex-build /artemis/codex-rs/target/release/codex /usr/local/bin/co
 # through OPENROUTER_API_KEY at run time.
 RUN mkdir -p /root/.codex && cat > /root/.codex/config.toml <<'EOF'
 model_provider = "openrouter"
-# The pilot uses a cheap reasoning model. Without an explicit effort it spends
-# most of its budget reasoning and returns plans instead of tool calls.
-model_reasoning_effort = "minimal"
+# Explicit effort prevents a reasoning model from spending the whole budget on
+# hidden reasoning; "low" keeps capability while still producing tool calls.
+model_reasoning_effort = "low"
 
 [model_providers.openrouter]
 name = "OpenRouter"
