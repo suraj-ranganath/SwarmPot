@@ -6,13 +6,18 @@ let runs = [],
   data = null,
   messages = [],
   selected = null;
-let channel = "activity",
+let channel = "summary",
   follow = true,
   paused = false,
   busy = false,
   feedSignature = "",
   runSignature = "",
   browsingOlder = false;
+let traceItems = [],
+  traceCursor = 0,
+  traceNext = null,
+  traceBusy = false,
+  traceKey = "";
 const activityKinds = new Set([
   "llm_decision",
   "llm_request",
@@ -36,6 +41,9 @@ const lifecycleStages = new Set([
   "teardown_done",
   "attempt_finalized",
   "infra_failed",
+  "metrics_written",
+  "teardown_start",
+  "grading_skipped",
 ]);
 function node(tag, text, cls) {
   const e = document.createElement(tag);
@@ -177,6 +185,10 @@ function showOverview() {
 function chooseEpisode() {
   episode = $("episode").value;
   messages = [];
+  traceItems = [];
+  traceCursor = 0;
+  traceNext = null;
+  traceKey = "";
   selected = null;
   data = null;
   feedSignature = "";
@@ -221,6 +233,7 @@ function activity() {
     : [];
 }
 function eventTitle(e) {
+  if (e.explanation?.title) return e.explanation.title;
   const p = e.payload;
   if (e.kind === "llm_decision") return "Model decision";
   if (e.kind === "llm_request") return "Model request started";
@@ -263,6 +276,7 @@ function eventTitle(e) {
   return e.kind.replace(/_/g, " ");
 }
 function eventBody(e) {
+  if (e.explanation?.description) return e.explanation.description;
   const p = e.payload;
   if (p.content) return p.content;
   const parts = [eventTitle(e)];
@@ -425,20 +439,355 @@ function chooseChannel(next) {
   selected = null;
   feedSignature = "";
   showOverview();
-  $("channel-title").textContent =
-    channel === "board" ? "defender-board" : "activity";
-  $("tab-label").textContent = channel === "board" ? "Messages" : "Activity";
-  for (const name of ["board", "activity"]) {
+  $("workspace").classList.remove("inspector-open");
+  const names = {
+    summary: "run-summary",
+    traces: "traces",
+    board: "defender-board",
+    activity: "activity",
+  };
+  const tabs = {
+    summary: "Run summary",
+    traces: "Trace records",
+    board: "Messages",
+    activity: "Activity",
+  };
+  $("channel-title").textContent = names[channel];
+  $("tab-label").textContent = tabs[channel];
+  for (const name of Object.keys(names)) {
     $("channel-" + name).classList.toggle("active", name === channel);
     $("channel-" + name).setAttribute("aria-pressed", String(name === channel));
   }
-  if (data) renderFeed();
+  $("phase").hidden = !["activity", "traces"].includes(channel);
+  $("trace-toolbar").hidden = channel !== "traces";
+  $("defender").hidden = channel === "summary";
+  $("pause").hidden = channel === "summary";
+  $("trace-more").hidden = channel !== "traces" || traceNext === null;
+  if (data) {
+    if (channel === "traces") loadTrace(true);
+    renderFeed();
+  }
 }
+function sourceOptions() {
+  const prior = $("trace-source").value,
+    options = data.inspection?.sources || [];
+  $("trace-source").replaceChildren();
+  for (const source of options)
+    $("trace-source").append(new Option(source.title, source.id));
+  if (options.some((s) => s.id === prior)) $("trace-source").value = prior;
+}
+function openTrace(phase = "all", source = "controller") {
+  $("phase").value = phase;
+  if ([...$("trace-source").options].some((o) => o.value === source))
+    $("trace-source").value = source;
+  chooseChannel("traces");
+}
+function traceButton(label, phase, source) {
+  const b = node("button", label, "trace-link");
+  b.onclick = () => openTrace(phase, source);
+  return b;
+}
+function renderSummary() {
+  const info = data.inspection;
+  if (!info) return;
+  const signature = JSON.stringify(info);
+  if (feedSignature === signature) return;
+  feedSignature = signature;
+  const scroll = $("feed").scrollTop;
+  $("feed").replaceChildren();
+  $("older").hidden = true;
+  $("trace-more").hidden = true;
+  $("count").textContent = "Recorded evidence";
+  const page = node("article", undefined, "run-summary");
+  page.append(
+    node("p", "RUN RECAP", "section-kicker"),
+    node(
+      "h2",
+      info.outcome.official_success === true
+        ? "Official attack succeeded"
+        : info.outcome.official_success === false
+          ? info.attacker.actions_used > 0
+            ? "Attack attempted; official objective was not achieved"
+            : info.attacker.actions_used === 0
+              ? "No counted attacker action was recorded"
+              : "Official grader reported the attack unsuccessful"
+          : "Attack outcome is not yet established",
+    ),
+    node(
+      "p",
+      "From recorded controller events, attacker logs and official grading records.",
+      "summary-intro",
+    ),
+  );
+  const cards = node("div", undefined, "summary-metrics");
+  for (const [label, value, detail] of [
+    [
+      "ATTACKER EXECUTION",
+      info.attacker.actions_used ?? "Unknown",
+      "counted tool actions",
+    ],
+    [
+      "TIME ALLOWANCE",
+      fmtDuration(info.termination.wall_clock_limit_seconds),
+      "resolved per-run setting",
+    ],
+    [
+      "ACTUAL DURATION",
+      fmtDuration(info.termination.elapsed_seconds),
+      info.termination.ended_before_time_allowance === true
+        ? "ended before the allowance"
+        : info.termination.ended_before_time_allowance === false
+          ? "did not end early"
+          : "timing comparison unknown",
+    ],
+    ["DECOY SSH", info.decoy.commands ?? "Unknown", "recorded SSH commands"],
+  ]) {
+    const c = node("div", undefined, "summary-metric");
+    c.append(
+      node("span", label),
+      node("strong", String(value)),
+      node("small", detail),
+    );
+    cards.append(c);
+  }
+  page.append(cards);
+  const sections = [
+    ["What the attackers did", info.attacker.description, "attack", "attacker"],
+    [
+      "Why execution stopped",
+      info.termination.description,
+      "attack",
+      "supervisor",
+    ],
+    [
+      "Official exploit result",
+      info.outcome.description,
+      "grading",
+      "controller",
+    ],
+    [
+      "Did the decoy draw them in?",
+      info.decoy.description +
+        " Causal steering is not established by a single run.",
+      "attack",
+      "ssh",
+    ],
+    [
+      "What the defenders did",
+      info.defender.description,
+      "attack",
+      "controller",
+    ],
+  ];
+  if (info.finalization)
+    sections.push([
+      "What “finalized” means",
+      info.finalization.description,
+      "finalization",
+      "controller",
+    ]);
+  for (const [title, text, phase, source] of sections) {
+    const section = node("section", undefined, "summary-section");
+    section.append(
+      node("h3", title),
+      node("p", text),
+      traceButton("Inspect this phase ↗", phase, source),
+    );
+    page.append(section);
+  }
+  if (info.decoy.lure_responses != null) {
+    const note = node(
+      "p",
+      `${info.decoy.lure_responses} lure-bearing HTTP responses are reported in the saved metrics. Serving a lure does not establish that an agent read or followed it.`,
+      "summary-note",
+    );
+    page.append(note);
+  }
+  const phases = node("section", undefined, "summary-phases");
+  phases.append(node("h3", "Explore the run by phase"));
+  for (const p of info.phases) {
+    const b = node("button", undefined, "phase-card");
+    const text = node("span");
+    text.append(
+      node("strong", p.title),
+      node(
+        "small",
+        p.start
+          ? `${time(p.start)} → ${p.end ? time(p.end) : "end not recorded"}`
+          : "Phase timing not recorded",
+      ),
+    );
+    b.append(
+      text,
+      node("span", fmtDuration(p.elapsed_seconds)),
+      node("span", "↗"),
+    );
+    b.onclick = () => openTrace(p.id, "controller");
+    phases.append(b);
+  }
+  page.append(phases);
+  $("feed").append(page);
+  $("feed").scrollTop = scroll;
+}
+function fmtDuration(value) {
+  if (value == null) return "Unknown";
+  const n = Math.round(value);
+  return n >= 60
+    ? Math.floor(n / 60) + "m " + String(n % 60).padStart(2, "0") + "s"
+    : n + "s";
+}
+async function loadTrace(reset = false) {
+  if (!data || !episode) return;
+  const source = $("trace-source").value,
+    phase = $("phase").value,
+    key = episode + "|" + source + "|" + phase;
+  if (reset || key !== traceKey) {
+    traceKey = key;
+    traceItems = [];
+    traceCursor = 0;
+    traceNext = null;
+    feedSignature = "";
+  }
+  if (traceBusy) return;
+  if (!source) {
+    $("trace-status").textContent = "No trace artifacts recorded";
+    renderTrace();
+    return;
+  }
+  traceBusy = true;
+  $("trace-status").textContent = "Reading recorded trace…";
+  try {
+    const result = await get(
+      "/api/trace?episode=" +
+        encodeURIComponent(episode) +
+        "&source=" +
+        encodeURIComponent(source) +
+        "&phase=" +
+        phase +
+        "&cursor=" +
+        traceCursor,
+    );
+    if (key !== traceKey) return;
+    const known = new Set(traceItems.map((r) => r.id));
+    traceItems.push(...result.records.filter((r) => !known.has(r.id)));
+    if (traceItems.length > 500) traceItems = traceItems.slice(-500);
+    traceCursor = result.end_cursor ?? result.next_cursor ?? traceCursor;
+    traceNext = result.next_cursor;
+    $("trace-status").textContent = result.missing?.length
+      ? result.missing.join(" · ")
+      : result.scan_limited
+        ? "Bounded scan · continue for more records"
+        : "Recorded source · " + (result.ordering || "source file order");
+    $("trace-more").hidden = traceNext === null;
+    feedSignature = "";
+    renderTrace();
+  } catch (e) {
+    $("trace-status").textContent =
+      "Trace unavailable. No sample data substituted.";
+  } finally {
+    traceBusy = false;
+    if (key !== traceKey && channel === "traces") loadTrace();
+  }
+}
+function renderTrace() {
+  const signature = JSON.stringify([
+    traceItems,
+    $("search").value,
+    $("defender").value,
+  ]);
+  if (feedSignature === signature) return;
+  feedSignature = signature;
+  const scroll = $("feed").scrollTop,
+    query = $("search").value.toLowerCase(),
+    agent = $("defender").value;
+  $("feed").replaceChildren();
+  $("older").hidden = true;
+  const visible = traceItems.filter(
+    (r) =>
+      (!agent || r.record.agent_id === agent) &&
+      (!query || JSON.stringify(r.record).toLowerCase().includes(query)),
+  );
+  $("count").textContent = visible.length + " loaded records";
+  $("trace-more").hidden = traceNext === null;
+  if (!visible.length)
+    $("feed").append(
+      empty(
+        "No trace records in this selection",
+        "Choose another source or phase. Missing, filtered and partial evidence is never replaced with invented events.",
+      ),
+    );
+  for (const item of visible) {
+    const row = item.record,
+      p = row.payload || {},
+      b = node("button", undefined, "message trace-message");
+    b.setAttribute("aria-label", "Inspect trace " + item.id);
+    const body = node("div", undefined, "message-main"),
+      top = node("div", undefined, "message-top");
+    top.append(
+      node("span", row.agent_id || row.actor || "Recorded source", "sender"),
+      node(
+        "span",
+        item.ts
+          ? /^\d\d:/.test(item.ts)
+            ? item.ts
+            : time(item.ts)
+          : "Timestamp unavailable",
+        "time",
+      ),
+    );
+    body.append(
+      top,
+      node("div", row.kind || row.eventid || "trace", "event-kind"),
+    );
+    const text =
+      row.kind === "http"
+        ? `${row.method || "HTTP"} ${row.host || ""}${row.path || ""} → ${row.status ?? "status unknown"}${row.lure ? " · lure included" : ""}`
+        : p.output_excerpt
+          ? `${p.text || p.event || "Tool result"}\n${p.output_excerpt}`
+          : p.command ||
+            p.text ||
+            p.message ||
+            row.message ||
+            row.input ||
+            p.stage ||
+            JSON.stringify(p);
+    body.append(
+      node("pre", String(text).slice(0, 1800), "trace-preview"),
+      node(
+        "span",
+        `${item.source} · byte ${item.offset} · ${item.phase}${item.excerpt ? " · excerpt truncated" : ""}`,
+        "trace-origin",
+      ),
+    );
+    b.append(avatar(row.agent_id), body);
+    b.onclick = () => {
+      selected = { kind: "trace", id: item.id };
+      renderDetails();
+    };
+    $("feed").append(b);
+  }
+  if (!paused && follow) $("feed").scrollTop = $("feed").scrollHeight;
+  else $("feed").scrollTop = scroll;
+}
+
 function renderFeed() {
   if (!data) return;
+  if (channel === "summary") {
+    renderSummary();
+    return;
+  }
+  if (channel === "traces") {
+    renderTrace();
+    return;
+  }
   const query = $("search").value.toLowerCase().trim(),
     filter = $("defender").value;
-  const records = channel === "board" ? messages : activity();
+  const records =
+    channel === "board"
+      ? messages
+      : activity().filter(
+          (e) => $("phase").value === "all" || e.phase === $("phase").value,
+        );
   const visible = records.filter(
     (r) =>
       (!filter || (r.sender || r.agent_id) === filter) &&
@@ -465,6 +814,7 @@ function renderFeed() {
     filter,
     query,
     selected,
+    $("phase").value,
   ]);
   if (signature === feedSignature) return;
   feedSignature = signature;
@@ -585,7 +935,13 @@ function renderDetails() {
       [...panel.querySelectorAll("details[open]")].map((e) => e.dataset.event),
     );
   let records, title, meta;
-  if (selected.kind === "message") {
+  if (selected.kind === "trace") {
+    const item = traceItems.find((r) => r.id === selected.id);
+    if (!item) return;
+    records = [item.record];
+    title = "Trace record";
+    meta = `${item.source} · byte ${item.offset} · ${item.phase}`;
+  } else if (selected.kind === "message") {
     const m = messages.find((r) => r.seq === selected.id);
     if (!m) return;
     records = related(m);
@@ -614,14 +970,65 @@ function renderDetails() {
         : "Original recorded event. No message-to-action link is implied.",
     ),
   );
+  if (selected.kind === "event") {
+    const record = records[0];
+    if (record.explanation) {
+      panel.append(
+        node("p", record.explanation.description, "detail-explanation"),
+      );
+      if (record.explanation.facts) {
+        const facts = node("dl", undefined, "event-facts");
+        for (const [key, value] of Object.entries(record.explanation.facts)) {
+          if (
+            [
+              "reason",
+              "reason_source",
+              "elapsed_seconds",
+              "wall_clock_limit_seconds",
+              "ended_before_time_allowance",
+              "exit_code",
+              "actions_used",
+              "action_limit",
+              "valid",
+              "official_attack_success",
+              "exclusion_reason",
+            ].includes(key)
+          ) {
+            facts.append(
+              node("dt", key.replace(/_/g, " ")),
+              node(
+                "dd",
+                value == null
+                  ? "Not recorded"
+                  : typeof value === "boolean"
+                    ? value
+                      ? "Yes"
+                      : "No"
+                    : String(value),
+              ),
+            );
+          }
+        }
+        panel.append(facts);
+      }
+      for (const source of record.explanation.sources || [])
+        panel.append(
+          traceButton(
+            "View " + source + " trace ↗",
+            record.explanation.phase,
+            source,
+          ),
+        );
+    }
+  }
   for (const e of records) {
     const d = node("details", undefined, "event");
     d.dataset.event = String(e.event_id || e.seq);
-    d.open = opened.has(d.dataset.event) || selected.kind === "event";
+    d.open = opened.has(d.dataset.event) || selected.kind === "trace";
     d.append(
       node(
         "summary",
-        `${time(e.ts)} · ${e.kind}${eventState(e) ? " · " + eventState(e) : ""}`,
+        `${e.ts ? time(e.ts) : "Recorded"} · ${e.kind || e.eventid || "raw trace"}${e.payload && eventState(e) ? " · " + eventState(e) : ""} · raw record`,
       ),
       node("pre", JSON.stringify(e, null, 2)),
     );
@@ -705,8 +1112,15 @@ async function refresh() {
     $("updated").textContent = last
       ? "Last record " + time(last.ts)
       : "No audit events recorded";
+    sourceOptions();
+    $("board-count").textContent =
+      data.board_enabled === false
+        ? "off"
+        : String(data.message_count ?? messages.length);
+    $("activity-count").textContent = String(activity().length);
     renderCards();
     renderFeed();
+    if (channel === "traces") loadTrace();
     renderDetails();
   } catch (e) {
     connection(false);
@@ -729,6 +1143,15 @@ $("search").oninput = () => {
 };
 $("more-runs").onclick = () => loadRuns(nextRuns);
 $("older").onclick = refresh;
+$("channel-summary").onclick = () => chooseChannel("summary");
+$("channel-traces").onclick = () => chooseChannel("traces");
+$("trace-source").onchange = () => loadTrace(true);
+$("phase").onchange = () => {
+  feedSignature = "";
+  if (channel === "traces") loadTrace(true);
+  else renderFeed();
+};
+$("trace-more").onclick = () => loadTrace();
 $("channel-board").onclick = () => chooseChannel("board");
 $("channel-activity").onclick = () => chooseChannel("activity");
 $("follow").onclick = () => {
@@ -773,6 +1196,7 @@ document.addEventListener("keydown", (e) => {
     $("workspace").classList.remove("nav-open", "inspector-open");
   }
 });
+chooseChannel("summary");
 loadRuns();
 setInterval(() => {
   if (follow) refresh();

@@ -35,6 +35,7 @@ from .defenders import (
     seed_decoy_home,
 )
 from .events import EventLog
+from .run_records import termination_facts, finalization_facts
 from .isolation import write_reset_manifest
 from .ledger import (
     begin_attempt,
@@ -367,9 +368,16 @@ def _wait_for_container(container_id: str, timeout_seconds: int) -> Dict[str, An
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout_seconds)
+        raw_exit = stdout.strip()
+        try:
+            exit_code = int(raw_exit)
+        except ValueError:
+            exit_code = None
         return {
-            "exit_code": int(stdout.strip() or 0),
+            "exit_code": exit_code,
             "timed_out": False,
+            "wait_returncode": proc.returncode,
+            "wait_error": proc.returncode != 0 or exit_code is None,
             "waited_seconds": round(time.time() - started, 1),
             "stderr": stderr[-2000:],
         }
@@ -634,7 +642,11 @@ def _run_attacker(state: Dict[str, Any]) -> Dict[str, Any]:
 
     wait_seconds = cfg.attacker.wall_clock_minutes * 60 + 300
     result = _wait_for_container(container_id, wait_seconds)
-    events.lifecycle("attacker_exit", **result)
+    # Persist the observed exit before optional log/state collection can fail.
+    write_json(state["paths"].attacker / "exit.json", result)
+    facts = termination_facts(state["paths"].root, exit_record=result)
+    events.lifecycle("attacker_exit", **result, termination=facts,
+                     stop_reason=facts["reason"], description=facts["description"])
 
     _container_logs(container_id, state["paths"].attacker / "container.log")
     try:
@@ -647,9 +659,6 @@ def _run_attacker(state: Dict[str, Any]) -> Dict[str, Any]:
     except EpisodeError:
         pass
 
-    state["paths"].attacker.joinpath("exit.json").write_text(
-        json.dumps(result, indent=2) + "\n", encoding="utf-8"
-    )
     return result
 
 
@@ -871,7 +880,8 @@ def run_episode(
             metrics=metrics or None,
             error=error_text or teardown_error,
         )
-        events.lifecycle("attempt_finalized", **{k: final.get(k) for k in ("status", "valid", "exclusion_reason")})
+        events.lifecycle("attempt_finalized", **{k: final.get(k) for k in ("status", "valid", "exclusion_reason")},
+                         finalization=finalization_facts(final, metrics_written=bool(metrics), grader_status=grader.get("status")))
 
     return read_json(paths.root / "metrics.json", default={})
 

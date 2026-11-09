@@ -70,14 +70,20 @@
         </div>
         <div class="sidebar-section">
           <h2>Channels</h2>
-          <button id="channel-board" class="channel" aria-pressed="false">
-            <span class="hash">#</span><span>defender-board</span
-            ><span class="channel-count" id="board-count">—</span></button
-          ><button
-            id="channel-activity"
+          <button
+            id="channel-summary"
             class="channel active"
             aria-pressed="true"
           >
+            <span class="hash">≡</span><span>run-summary</span>
+          </button>
+          <button id="channel-traces" class="channel" aria-pressed="false">
+            <span class="hash">⌁</span><span>traces</span>
+          </button>
+          <button id="channel-board" class="channel" aria-pressed="false">
+            <span class="hash">#</span><span>defender-board</span
+            ><span class="channel-count" id="board-count">—</span></button
+          ><button id="channel-activity" class="channel" aria-pressed="false">
             <span class="hash">#</span><span>activity</span
             ><span class="channel-count" id="activity-count">—</span>
           </button>
@@ -115,7 +121,7 @@
           </button>
           <div class="channel-heading">
             <h1>
-              <span>#</span> <span id="channel-title">activity</span
+              <span>#</span> <span id="channel-title">run-summary</span
               ><span class="private-label">PRIVATE</span>
             </h1>
             <p id="run-meta">
@@ -133,10 +139,18 @@
         </header>
         <div class="channel-toolbar">
           <div class="channel-tabs">
-            <span class="active-tab" id="tab-label">Activity</span
+            <span class="active-tab" id="tab-label">Run summary</span
             ><span id="count">0 records</span>
           </div>
           <div class="controls">
+            <label class="sr" for="phase">Run phase</label
+            ><select id="phase" aria-label="Run phase" hidden>
+              <option value="all">All phases</option>
+              <option value="setup">Setup &amp; health</option>
+              <option value="attack">Attack execution</option>
+              <option value="grading">Official grading</option>
+              <option value="finalization">Cleanup &amp; finalization</option>
+            </select>
             <label class="sr" for="defender">Filter by defender</label
             ><select id="defender">
               <option value="">All defenders</option></select
@@ -149,13 +163,19 @@
           <span id="run-state">Recorded experiment</span
           ><span id="source-label">Experiment logs</span>
         </div>
+        <div id="trace-toolbar" class="trace-toolbar" hidden>
+          <label for="trace-source">TRACE SOURCE</label
+          ><select id="trace-source" aria-label="Trace source"></select
+          ><span id="trace-status" role="status"></span>
+        </div>
         <div class="feed-wrap">
           <div
             id="feed"
             tabindex="0"
             aria-label="Chronological message feed"
           ></div>
-          <button id="older" hidden>Load next 100 messages</button>
+          <button id="older" hidden>Load next 100 messages</button
+          ><button id="trace-more" hidden>Load more trace records</button>
         </div>
         <div class="composer-wrap">
           <div class="read-only-composer">
