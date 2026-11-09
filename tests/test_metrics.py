@@ -32,6 +32,9 @@ def test_paired_comparison_matches_episodes_by_cve_and_repetition() -> None:
          "delay": 0.0, "divert_per": None, "subdefuse": None, "decoy_actions": 0},
         {"cve": "CVE-1", "repetition": 2, "arm": "D", "episode_id": "d2", "real_success": False,
          "delay": 0.25, "divert_per": None, "subdefuse": None, "decoy_actions": 1},
+        # Never-started episodes must not enter paired statistics.
+        {"cve": "CVE-1", "repetition": 3, "arm": "E", "episode_id": "e3", "real_success": False,
+         "delay": 0.9, "divert_per": 0.9, "subdefuse": 0.9, "decoy_actions": 9, "valid": False},
     ]
     paired = paired_comparison(rows)
     assert [pair["repetition"] for pair in paired["pairs"]] == [1, 2]

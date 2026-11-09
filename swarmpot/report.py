@@ -71,6 +71,9 @@ def load_episodes(runs_dir: Path = RUNS_DIR) -> List[Dict[str, Any]]:
             "board_enabled": defender.get("board_enabled"),
             "board_messages": defender.get("board_messages"),
             "consistency_ok": consistency.get("ok") if isinstance(consistency, dict) else None,
+            # An episode whose attacker never started (setup error, missing
+            # dependency, etc.) must not be counted as an unsuccessful attack.
+            "valid": attacker.get("wall_seconds") is not None,
         }
         rows.append(row)
     return rows
@@ -123,6 +126,7 @@ def paired_comparison(
     right: str = "D",
     metrics: Iterable[str] = ("real_success", "delay", "divert_per", "subdefuse", "decoy_actions"),
 ) -> Dict[str, Any]:
+    rows = [row for row in rows if row.get("valid", True)]
     index: Dict[Tuple[str, int], Dict[str, Dict[str, Any]]] = {}
     for row in rows:
         key = (str(row.get("cve")), int(row.get("repetition") or 0))
@@ -173,6 +177,7 @@ def paired_comparison(
 
 
 def arm_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    rows = [row for row in rows if row.get("valid", True)]
     out: Dict[str, Any] = {}
     for arm in sorted({str(row.get("arm")) for row in rows}):
         subset = [row for row in rows if str(row.get("arm")) == arm]
