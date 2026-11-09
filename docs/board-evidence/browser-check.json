@@ -1,0 +1,31 @@
+{
+  "checks": [
+    "empty",
+    "waiting",
+    "live running",
+    "pending wake",
+    "passive no inference",
+    "pause retains scroll while evidence updates",
+    "defender filter",
+    "delivery and commit links",
+    "expanded detail survives refresh",
+    "completed stopped",
+    "reload does not mutate DB/logs/decisions",
+    "arm filter",
+    "legacy missing evidence",
+    "no runs",
+    "mobile overflow",
+    "disconnected and recovery"
+  ],
+  "browser_js_heap_bytes": 10000000,
+  "browser_memory_scope": "performance.memory.usedJSHeapSize, not whole-browser RSS",
+  "evidence_kind": "deterministic model stubs and recorded fixture data",
+  "screenshots": [
+    "completed.png",
+    "disconnected.png",
+    "empty.png",
+    "live-paused.png",
+    "missing-evidence.png",
+    "mobile.png"
+  ]
+}

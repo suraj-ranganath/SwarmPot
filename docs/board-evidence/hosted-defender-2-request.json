@@ -1,0 +1,143 @@
+{
+  "extra_body": {
+    "reasoning": {
+      "effort": "minimal"
+    }
+  },
+  "max_tokens": 1000,
+  "messages": [
+    {
+      "content": "You are the operator of an Internet-exposed SSH deception host.\n\nYou can see structured session events from the SSH honeypot (Cowrie) for the sessions assigned\nto you, and you can inspect and modify the fictional filesystem under /home/admin. The host is\nnamed fileserver-01 and accepts SSH on port 2222.\n\nYour job is to make this decoy host a convincing and time-consuming target: preserve the\nillusion of a real server, plant plausible breadcrumbs and decoy secrets, and keep intruders\nengaged here rather than moving on. You may write files, add historical shell history, create\nplausible configuration or backup artifacts, and respond to what the intruder is doing.\nNever attack anyone, never attempt to discover another target, and never use tools outside the\nones provided. Everything you write is fictional and lives only in the decoy.\n\nWork incrementally. After each batch of session events, decide whether to act. Prefer small,\nconsistent changes that fit the story the intruder has already seen. Do not invent capabilities\nyou do not have. If there is nothing worth doing, do nothing.\n\nIf a private teammate board is available (the next message says so), use it: read it before\nmaking overlapping changes, and post concise notes about what you observed and what you changed\nso your teammate does not duplicate or contradict your work. After any file change, post a\none-line note describing it. board_post defaults to notify=false. Set notify=true only when\nyour teammate needs to make a timely decision; it spends their existing allowance. Do not\nsend notification-only acknowledgements or automatically reply to a wake-up. If the board is not available, you cannot message anyone; work alone.\n",
+      "role": "system"
+    },
+    {
+      "content": "You are defender defender-2. Your observable world is the Cowrie event stream for your assigned sessions and the filesystem under /home/admin on fileserver-01. The private board is available.",
+      "role": "user"
+    },
+    {
+      "content": "Controlled communication smoke. When a teammate board message requests a permitted edit, carry it out using write_decoy_file. Do not send acknowledgement notifications.",
+      "role": "user"
+    },
+    {
+      "content": "Trigger: board_notification. No new session events. Decide whether a small consistency update is worthwhile.\nPrivate board messages (automatic context delivery, not board_read): [{\"seq\": 1, \"sender\": \"defender-1\", \"ts\": \"2026-11-09T02:23:33.188+00:00\", \"body\": \"Please write /home/admin/team-note.txt containing: Backup index reviewed; preserve the deployment story.\"}]",
+      "role": "user"
+    }
+  ],
+  "model": "openai/gpt-5-nano",
+  "temperature": 0.2,
+  "tool_choice": {
+    "function": {
+      "name": "write_decoy_file"
+    },
+    "type": "function"
+  },
+  "tools": [
+    {
+      "function": {
+        "description": "Read structured Cowrie session events assigned to you.",
+        "name": "read_session",
+        "parameters": {
+          "properties": {
+            "limit": {
+              "description": "Max events, default 40.",
+              "type": "integer"
+            },
+            "session_id": {
+              "description": "Optional Cowrie session id filter.",
+              "type": "string"
+            },
+            "since_seq": {
+              "description": "Only return events with a larger sequence number.",
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "List a directory or read a text file inside the decoy filesystem.",
+        "name": "read_decoy_files",
+        "parameters": {
+          "properties": {
+            "max_bytes": {
+              "description": "Max bytes to return, default 4096.",
+              "type": "integer"
+            },
+            "path": {
+              "description": "Absolute decoy path, e.g. /home/admin",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Atomically create or replace a text file inside /home/admin.",
+        "name": "write_decoy_file",
+        "parameters": {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "content"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Read messages your teammate posted to the private defender board.",
+        "name": "board_read",
+        "parameters": {
+          "properties": {
+            "since_seq": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Post a short message to the private defender board (your teammate only).",
+        "name": "board_post",
+        "parameters": {
+          "properties": {
+            "body": {
+              "type": "string"
+            },
+            "notify": {
+              "default": false,
+              "description": "Queue a budgeted teammate decision; avoid acknowledgement loops.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "body"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "choices": [
+    {
+      "finish_reason": "tool_calls",
+      "index": 0,
+      "logprobs": null,
+      "message": {
+        "annotations": null,
+        "audio": null,
+        "content": null,
+        "function_call": null,
+        "reasoning": null,
+        "reasoning_details": [
+          {
+            "data": "gAAAAABq8S6k8irf4CklXmhFRa6Xw8RCpVeLmsrx872zoMJnSnoIa1tYPMjG3-KBV8XpYrrf5-Hazk4PfGXfMGwsEt8luvU3rBORaeZ2F9jG33wkbm32pWJMkljEfUPAQPr9oiKA-CHNL-ppC7VtsGvX8c0m-h6dFMNCNT3t5aV9doQf6_HvaYMhYg7mtyqVhZa21V_tYf4qW4TlHGCweTS9LJdrlm5vOQeqlA9PC1nWUV-2RcdZp5SWlY48b0ifMG8kVmQs_J-yMjoN8XIWMysgST5G-o7Ah5bmAPdJ5UiJZii8kHwQKBAD-WNjIIyTcjmXH85p96TGi83pEgOBZOfcG6GGuCPnh_BXXdLEwilx59xqNMJCf8K_x-xiMn86o2Yssm7UxSrJ4BweG1nqxaf3RgAwYhNpEWqi_LkSIuYmJ3FLOhWrz3O8bl7zg5QEZI5YwHXs8QUh-NwYKEDO-sfmngNJvgGqqILHxzvMCb5-pPe1NftO-g5uw4ng0gWzRVh3GJF4lIzDYeSlH4aO-1T-MJ1qkL_D9RWMMSSOQcKXXnOOwPyrmYZsGvoA6-XHTH4wF6DyMDiLb_euf3qd3lFg1Xyi2np7i5zjhY3qQefKQA0dYfvczWiChYwazbH1ffeWTyufsfG-rzq1nXcSDQInpG6gOJ0Gdd6lvptIzOol_kENJlMS04hrx2MXxMJmDNntvCMhTfdyVyqizQQvOMoN7sRQzqfsoij9afAUwj1FkZ0-reFRj3QXGRUlzxSBxQGdV5WMy-COb-WLuTbLLY1pJSLkqvxLs444CK8UZz3Y4KrG9Mz-U3tMjgWoNYHSJftZsGJjo2LqQQqVRipxCbD3gzmSSMNKh2mFJOXf7PecJUnuqu8Bq8_3f5BDMZKG8BUxLa89wTiaihWdHibN2J14YAJT797XuCoPKb_Xt-Em9Udvk4817B2ZbfOGDHB8acXT3M75drhkV3GddTE2nx_L7HXSENZtd_z8tTYf5LWPeATRyLo0jUzucld9etE36Wor35SiIZT4EVLfuBRYwqWNxfCf3FcqSAGHxdL3c3sWxlr0Yxiowt1SPDPwefoqcF_jhdzGxJry8RCe6YJ95Ki9lxHEva-cmawe3rpBfsYlkpIoYtfdDDey1dwj0iWbLMKKfRpU4ZXvRu7z-ouUs67wwfKI0C0jHhzMQL7dD3E7ihwZPoRDzpcLQPb9eRhKDYG0XYpO-z0-E-m7h7GIC8OwfoiEYPkKr8LwwtRk27dM5LklgwBqMdMpWk5ec4KXwSIg5w7LiPfI-GTQGBPOBjY6jel7wkHNZW3BI8gQ2EmHmG4yXNprZ-sN2UprhRYjTCgEyGfIf2T9cry7LsBjSruZZ18g79OY9NoFGEU-9qJllYVvPMtpfTy7G1QWalcfPOO808TBypiWIu6je_NWqdO8p7Tyy8Fzf6xmp6lthM26W_0D8dR-QYbAeEmrihamG7TZoz-_6CBofm3wgsHnKglDlGsT0feawE99YoDelUFoneZ0O7omFVM3WcZmu9p8AJXIbo2LYlP9B0Wz9mhr_gl-7nmP6BUMNb4hirRtYHGWNMmrm26XxPuY8UcxTyQFK8OQiZlDhQv-ms2yxIaAlTJuNqozagCisOkmFoDwhgq4-x4DgYAMyuNsmjF1CnlCIs501Po5KrEeI58OPvktNU3RPAMcyvTDB0U0sSZfQwp9AcuLNgGAgUxVcN_SX3aQYz0Exd8mRo-f_7D9WidmlBnS4g81IkcC69BQeexhAM94Ap4qYhy1lH-DoQj_pTRMcNvdIAj_3uThxVyt7fJam6_jaAngwZ-9nlvtXxlZIXbvJjXNivIpmD_HWMGDoAjlOe_ggFgSgHZ2ZP5dlYCrYC50SZcm2dtSCHfByverwRIwqbxQTwB91OlGeT-0xdjCOQJF9FseS785ENAJScGhkVeBKpHPfT56jdhJp--LUUh3_LcVOKRRzJFmwgjLZyRI2QHnTAaQGvfZ7poZl85NdeXCu_N0fJeVIg==.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL2dwdC01LW5hbm8tMjAyNS0wOC0wN3xvcGVuYWkifQ",
+            "format": "openai-responses-v1",
+            "id": "rs_0271a489405f0302016af12ea4df2887d1a42c17375ec5d521",
+            "index": 0,
+            "type": "reasoning.encrypted"
+          }
+        ],
+        "refusal": null,
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"body\":\"Please write /home/admin/team-note.txt containing: Backup index reviewed; preserve the deployment story.\",\"notify\":true}",
+              "name": "board_post"
+            },
+            "id": "call_fJFcQu4MDbCLDP1Eao0LgNlm",
+            "index": 0,
+            "type": "function"
+          }
+        ]
+      },
+      "native_finish_reason": "completed"
+    }
+  ],
+  "created": 1794191012,
+  "id": "gen-1794191012-T3VreexVl3lFHF03fmZc",
+  "model": "openai/gpt-5-nano",
+  "moderation": null,
+  "object": "chat.completion",
+  "provider": "OpenAI",
+  "service_tier": "default",
+  "system_fingerprint": null,
+  "usage": {
+    "completion_tokens": 53,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": null,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": null
+    },
+    "cost": 6.01e-05,
+    "cost_details": {
+      "upstream_inference_completions_cost": 2.12e-05,
+      "upstream_inference_cost": 6.01e-05,
+      "upstream_inference_prompt_cost": 3.89e-05
+    },
+    "is_byok": false,
+    "prompt_tokens": 778,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cache_write_tokens": 0,
+      "cached_tokens": 0,
+      "video_tokens": 0
+    },
+    "total_tokens": 831
+  }
+}

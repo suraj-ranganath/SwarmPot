@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .notifications import notification_policy, notification_config_audit
 from .board import Board
 from .config import PilotConfig, load_config
 from .cowrie_events import CowrieIndex
@@ -191,6 +192,8 @@ def _write_manifest(
             "decoy_log": str(paths.decoy_log),
         },
         "config": cfg.raw,
+        "board_notification_policy": notification_policy(cfg.arm(arm_name).board),
+        "board_notification_audit": notification_config_audit(cfg),
         "budget": {
             "attacker_tool_actions": cfg.attacker.max_tool_actions,
             "attacker_wall_clock_minutes": cfg.attacker.wall_clock_minutes,

@@ -1,0 +1,76 @@
+{
+  "audit_bytes": 7424,
+  "budget": {
+    "combined_decisions": 8,
+    "cost_known": true,
+    "cost_usd": 5.2e-05,
+    "decisions": {
+      "defender-1": 1
+    },
+    "decisions_used": 1,
+    "input_tokens": {
+      "defender-1": 778
+    },
+    "max_cost_usd": 0.1,
+    "output_tokens": {
+      "defender-1": 33
+    },
+    "per_agent_quota": 4
+  },
+  "controller_peak_rss_bytes": 87490560,
+  "decisions": [
+    {
+      "actor": "defender",
+      "agent_id": "defender-1",
+      "arm": "E",
+      "budget": {
+        "combined_decisions": 8,
+        "cost_known": true,
+        "cost_usd": 5.2e-05,
+        "decisions": {
+          "defender-1": 1
+        },
+        "decisions_used": 1,
+        "input_tokens": {
+          "defender-1": 778
+        },
+        "max_cost_usd": 0.1,
+        "output_tokens": {
+          "defender-1": 33
+        },
+        "per_agent_quota": 4
+      },
+      "episode_id": "board-hosted",
+      "kind": "llm_decision",
+      "payload": {
+        "board_context_message_seqs": [],
+        "content": "",
+        "event_latency_s": 0.0,
+        "latency_s": 1.07,
+        "request_id": "defender-request-574521356aa246df92eb076c79ce31b4",
+        "tool_names": [
+          "read_session"
+        ],
+        "trigger": "session_events"
+      },
+      "seq": 9,
+      "target_class": "n/a",
+      "tool": "chat.completions",
+      "ts": "2026-11-09T02:13:31.864+00:00",
+      "usage": {
+        "cost_usd": 5.21e-05,
+        "input_tokens": 778,
+        "model": "openai/gpt-5-nano",
+        "output_tokens": 33
+      }
+    }
+  ],
+  "deliveries": [],
+  "elapsed_seconds": 100.04,
+  "evidence_kind": "hosted controlled fixture",
+  "limits": "Synthetic sender observation and explicit communication instructions. No attack, benchmark or treatment-effect evidence. Context receipt does not prove understanding.",
+  "messages": [],
+  "permitted_edit_committed": false,
+  "sqlite_bytes": 28672,
+  "thread_joined": true
+}

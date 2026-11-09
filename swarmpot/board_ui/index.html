@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SwarmPot · Defender board</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/">SP<span> / OBSERVATORY</span></a>
+      <div class="private">LOCAL ONLY <span>·</span> READ ONLY</div>
+      <div id="connection" role="status">Connecting…</div>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">SWARMPOT / DEFENDER COMMUNICATION</p>
+          <h1>A shared story.<br /><em>Every exchange recorded.</em></h1>
+        </div>
+        <p class="intro-note">
+          Observe the team’s private board.<br />Wake-ups originate from agent
+          tools.<br />Viewing never changes a run.
+        </p>
+      </section>
+      <section class="selectors" aria-label="Run selection">
+        <label
+          >ARM<select id="arm">
+            <option value="">All arms</option>
+            <option>A</option>
+            <option>B</option>
+            <option>C</option>
+            <option>D</option>
+            <option>E</option>
+          </select></label
+        ><label class="run"
+          >EPISODE<select id="episode">
+            <option value="">Loading runs…</option>
+          </select></label
+        ><button id="more-runs" hidden>Older episodes</button>
+        <div id="run-meta"></div>
+      </section>
+      <div id="notice" role="status" hidden></div>
+      <section id="cards" aria-label="Defender statuses"></section>
+      <section class="board">
+        <div class="board-head">
+          <div>
+            <p class="eyebrow">PRIVATE CHANNEL / DEFENDERS</p>
+            <h2>Message ledger <span id="count">0</span></h2>
+          </div>
+          <div class="controls">
+            <label class="sr" for="defender">Filter by defender</label
+            ><select id="defender">
+              <option value="">All defenders</option></select
+            ><button id="follow" aria-pressed="true">Live follow on</button
+            ><button id="pause" aria-pressed="false">Pause scrolling</button>
+          </div>
+        </div>
+        <div class="ledger">
+          <div class="feed-wrap">
+            <div
+              id="feed"
+              tabindex="0"
+              aria-label="Chronological message feed"
+            ></div>
+            <button id="older" hidden>Load next 100 messages</button>
+          </div>
+          <aside id="details" aria-label="Message details">
+            <p class="eyebrow">EVIDENCE INSPECTOR</p>
+            <h3>The record, in context.</h3>
+            <p>
+              Select a message to inspect wake-ups, context delivery, decisions
+              and file edits.
+            </p>
+            <p class="caution">
+              Context delivery shows that content was supplied to a successful
+              request. Understanding and influence remain unknown.
+            </p>
+          </aside>
+        </div>
+      </section>
+      <footer>
+        <span>SQLite + audit logs remain authoritative.</span
+        ><span id="policy">Notification policy: evidence unavailable</span>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -145,3 +145,46 @@ Board message access is the only difference. Unit tests additionally prove the
 
 Filled in by the pilot runs; see `runs/summary/summary.md`. The official grader
 verdict is always the first field of every episode's `metrics.json`.
+
+
+## G5 update — defender observer and teammate-wake-v1 (2026-11-08)
+
+The earlier G5 PASS above covered tool plumbing, not actual communication,
+notifications or browser visibility. It does not certify this new E condition.
+
+Implemented and checked in an isolated `codex/defender-board` worktree:
+
+- `python -m pytest`: **27 passed, 1 optional browser check skipped**.
+- `SWARMPOT_BROWSER_CHECK=1 SWARMPOT_BROWSER_ARTIFACTS=docs/board-evidence python -m pytest tests/test_board_browser.py`:
+  **1 passed**, with real Chromium screenshots for live, paused, completed,
+  empty, legacy missing evidence, disconnected/recovered and mobile states.
+  DB/log hashes and decision counts are unchanged by viewing/refreshing.
+- `python scripts/verify_board.py --out runs/board-hosted-final --hosted`:
+  **directed hosted protocol check passed**. One actual `notify=true` post,
+  teammate context receipt and permitted committed file edit. Two decisions,
+  1,550 input tokens / 105 output tokens, estimated $0.000119. The earlier
+  unconstrained attempt posted nothing; its evidence is retained too.
+- Idle, busy/burst, retained SSH observations, partial/failed delivery, retries,
+  quota/stop denials, passive/failed/over-cap posts and explicit-read separation
+  are deterministic fixture checks, not benchmark outcomes.
+- A communication-only D/E audit pins policy version, actual tool schemas,
+  scheduler interval and combined allowance. The broader paired environment,
+  seed and grading audit remains owned by the concurrent research builder.
+
+Launch: `python -m swarmpot.board_view --runs-dir runs --port 8765`.
+See [operator instructions, policy and evidence](board.md). Measured hosted
+process peak RSS: 88,047,616 bytes; SQLite: 28,672 bytes; audit: 13,128 bytes.
+Browser reported approximately 10 MB JS heap, not whole-browser RSS.
+
+The original dirty checkout and running experiments were untouched. A scratch
+merge against its current defender/event/lifecycle work passed the 24 selected
+board, defender, event and paired/naming tests. The initial broader scratch
+suite had an unrelated judge-fixture assertion failure (claim prose contained
+“official”); no research-integrity changes were made here to fix it. This is
+compatibility evidence for that uncommitted snapshot, not a claim that the
+other builder's work has been merged or fully validated.
+
+Still pending for research conclusions: spontaneous messaging in natural
+attacker episodes, final full paired audit with the other builder's committed
+work, and comparative A–E measurements. Do not treat controlled named-tool
+smokes as evidence of a cooperation effect or pool old passive E with v1 E.

@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ from openai import OpenAI
 
 from .board import Board, BoardBudgetExceeded
 from .cowrie_events import CowrieIndex
+from .defender_scheduler import DefenderTeam
 from .events import EventLog
 from .pricing import Pricing
 from .util import ensure_dir, now_iso, sha256_text, write_json
@@ -41,7 +43,9 @@ you do not have. If there is nothing worth doing, do nothing.
 If a private teammate board is available (the next message says so), use it: read it before
 making overlapping changes, and post concise notes about what you observed and what you changed
 so your teammate does not duplicate or contradict your work. After any file change, post a
-one-line note describing it. If the board is not available, you cannot message anyone; work alone.
+one-line note describing it. board_post defaults to notify=false. Set notify=true only when
+your teammate needs to make a timely decision; it spends their existing allowance. Do not
+send notification-only acknowledgements or automatically reply to a wake-up. If the board is not available, you cannot message anyone; work alone.
 """
 
 
@@ -58,6 +62,7 @@ class DefenderBudget:
         self.output_tokens: Dict[str, int] = {}
         self.cost_usd = 0.0
         self.cost_known = True
+        self.failed_requests: Dict[str, int] = {}
         self._lock = threading.Lock()
 
     def acquire(self, agent_id: str) -> bool:
@@ -73,6 +78,12 @@ class DefenderBudget:
             self.decisions[agent_id] = used + 1
             return True
 
+    def available(self, agent_id: str) -> bool:
+        with self._lock:
+            return (self.decisions.get(agent_id, 0) < self.per_agent_quota
+                    and sum(self.decisions.values()) < self.combined_decisions
+                    and self.cost_usd < self.max_cost_usd)
+
     def record_usage(self, agent_id: str, input_tokens: int, output_tokens: int, cost: Optional[float]) -> None:
         with self._lock:
             self.input_tokens[agent_id] = self.input_tokens.get(agent_id, 0) + input_tokens
@@ -81,6 +92,11 @@ class DefenderBudget:
                 self.cost_known = False
             else:
                 self.cost_usd += cost
+
+    def record_failed_request(self, agent_id: str) -> None:
+        with self._lock:
+            self.failed_requests[agent_id] = self.failed_requests.get(agent_id, 0) + 1
+            self.cost_known = False  # failed provider requests may have been billed
 
     def exhausted(self) -> bool:
         with self._lock:
@@ -97,6 +113,7 @@ class DefenderBudget:
                 "output_tokens": dict(self.output_tokens),
                 "cost_usd": round(self.cost_usd, 6),
                 "cost_known": self.cost_known,
+                "failed_requests": dict(self.failed_requests),
                 "max_cost_usd": self.max_cost_usd,
             }
 
@@ -240,7 +257,7 @@ class DecoyFiles:
             "content": data.decode("utf-8", errors="replace"),
         }
 
-    def write(self, raw_path: str, content: str) -> Dict[str, Any]:
+    def write(self, raw_path: str, content: str, *, request_id: Optional[str] = None) -> Dict[str, Any]:
         if len(content.encode("utf-8")) > self.max_file_bytes:
             raise ValueError(f"content exceeds {self.max_file_bytes} bytes")
         path = self._resolve(raw_path)
@@ -285,7 +302,7 @@ class DecoyFiles:
             agent_id=self.agent_id,
             tool="write_decoy_file",
             target_class="n/a",
-            payload={"path": shown, "bytes": record["bytes"], "provenance_id": record["provenance_id"]},
+            payload={"request_id": request_id, "path": shown, "bytes": record["bytes"], "provenance_id": record["provenance_id"]},
         )
         return {"ok": True, "path": shown, "provenance_id": record["provenance_id"]}
 
@@ -358,7 +375,11 @@ def _tool_schemas(board_enabled: bool) -> List[Dict[str, Any]]:
                     "description": "Post a short message to the private defender board (your teammate only).",
                     "parameters": {
                         "type": "object",
-                        "properties": {"body": {"type": "string"}},
+                        "properties": {
+                            "body": {"type": "string"},
+                            "notify": {"type": "boolean", "default": False,
+                                       "description": "Queue a budgeted teammate decision; avoid acknowledgement loops."},
+                        },
                         "required": ["body"],
                     },
                 },
@@ -409,6 +430,8 @@ class DefenderAgent:
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY"),
+            max_retries=0,
+            timeout=120.0,
         )
         self.history: List[Dict[str, Any]] = [
             {"role": "system", "content": DEFENDER_SYSTEM_PROMPT},
@@ -427,11 +450,17 @@ class DefenderAgent:
         self.decisions = 0
         self.last_heartbeat = 0.0
         self.stopped = False
+        self.teammate_id: Optional[str] = None
+        self._request_id: Optional[str] = None
+        self._explicit_board_seqs: List[int] = []
+        self._retry_of: Optional[str] = None
 
     # ----------------------------------------------------------------- tools
     def _execute_tool(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         started = time.time()
         try:
+            if self.stopped:
+                raise ValueError("defender stopped")
             if name == "read_session":
                 rows = self.index.events_for(
                     self.agent_id,
@@ -443,26 +472,57 @@ class DefenderAgent:
             elif name == "read_decoy_files":
                 result = self.decoy.read(args.get("path", "/home/admin"), int(args.get("max_bytes", 4096)))
             elif name == "write_decoy_file":
-                result = self.decoy.write(args["path"], args["content"])
+                result = self.decoy.write(args["path"], args["content"], request_id=self._request_id)
             elif name == "board_read" and self.board:
-                result = {"messages": self.board.read_since(int(args.get("since_seq", 0)))}
+                since = int(args.get("since_seq", 0))
+                messages = []
+                for row in self.board.read_since(since, limit=8):
+                    if len(json.dumps({"messages": messages + [row]})) > 6500:
+                        break
+                    messages.append(row)
+                result = {"messages": messages}
+                self._explicit_board_seqs = [row["seq"] for row in messages]
+                self.events.emit("defender", "board_read", agent_id=self.agent_id,
+                                 target_class="n/a", payload={"message_seqs": self._explicit_board_seqs,
+                                 "request_id": self._request_id, "since_seq": since})
             elif name == "board_post" and self.board:
-                post = self.board.post(self.agent_id, str(args.get("body", ""))[:2000])
+                notify = args.get("notify", False)
+                if not isinstance(notify, bool):
+                    raise ValueError("notify must be a boolean")
+                body = str(args.get("body", ""))[:2000]
+                if len(json.dumps(body)) > 5500:
+                    raise ValueError("board body exceeds bounded context size")
+                post = self.board.post(self.agent_id, body,
+                                       notify_to=self.teammate_id if notify else None)
                 self.events.emit(
                     "defender",
                     "board_post",
                     agent_id=self.agent_id,
                     tool="board_post",
                     target_class="n/a",
-                    payload=post,
+                    payload={**post, "request_id": self._request_id},
                 )
+                if notify:
+                    self.events.emit("defender", "board_notification", agent_id=self.agent_id,
+                                     target_class="n/a", payload={
+                                         "message_seqs": [post["seq"]], "origin": self.agent_id,
+                                         "recipient": self.teammate_id,
+                                         "status": "queued" if self.teammate_id else "denied",
+                                         "reason": None if self.teammate_id else "no_teammate",
+                                         "request_id": self._request_id,
+                                     })
                 result = post
             else:
                 result = {"error": f"unknown or unavailable tool: {name}"}
-            ok = True
-        except (ValueError, KeyError, BoardBudgetExceeded, OSError) as exc:
+            ok = "error" not in result
+        except (ValueError, KeyError, TypeError, BoardBudgetExceeded, OSError) as exc:
             result = {"error": str(exc)}
             ok = False
+        if name == "board_post" and args.get("notify") is True and "error" in result:
+            self.events.emit("defender", "board_notification", agent_id=self.agent_id,
+                             target_class="n/a", payload={"status": "denied", "reason": result["error"],
+                             "origin": self.agent_id, "recipient": self.teammate_id,
+                             "message_seqs": [], "request_id": self._request_id})
         elapsed_ms = round((time.time() - started) * 1000, 1)
         self.events.emit(
             "defender",
@@ -470,7 +530,7 @@ class DefenderAgent:
             agent_id=self.agent_id,
             tool=name,
             target_class="n/a",
-            payload={"args": args, "ok": ok, "result_preview": json.dumps(result)[:1200], "elapsed_ms": elapsed_ms},
+            payload={"request_id": self._request_id, "args": args, "ok": ok, "result_preview": json.dumps(result)[:1200], "elapsed_ms": elapsed_ms},
         )
         return result
 
@@ -484,9 +544,12 @@ class DefenderAgent:
         return out
 
     # ------------------------------------------------------------------ loop
-    def step(self, trigger: str, new_rows: List[Dict[str, Any]]) -> None:
+    def step(self, trigger: str, new_rows: List[Dict[str, Any]]) -> bool:
         if self.stopped or not self.budget.acquire(self.agent_id):
-            return
+            self.events.emit("defender", "decision_denied", agent_id=self.agent_id,
+                             target_class="n/a", payload={"trigger": trigger,
+                             "reason": "stopped" if self.stopped else "budget_exhausted"})
+            return False
         latency = 0.0
         if new_rows:
             first_ts = _parse_ts(new_rows[0].get("timestamp", ""))
@@ -498,11 +561,16 @@ class DefenderAgent:
             f"Trigger: {trigger}. "
             + (
                 f"{len(new_rows)} new assigned session event(s): "
-                + json.dumps(self._compact(new_rows[-30:]))[:6000]
+                + json.dumps(self._compact(new_rows))
                 if new_rows
                 else "No new session events. Decide whether a small consistency update is worthwhile."
             )
         )
+        board_rows = self.board.delivery_batch(self.agent_id) if self.board else []
+        message_seqs = [row["seq"] for row in board_rows]
+        if board_rows:
+            content += "\nPrivate board messages (automatic context delivery, not board_read): " + json.dumps(board_rows)
+        self._request_id = "defender-request-" + uuid.uuid4().hex
         self.history.append({"role": "user", "content": content})
         # Keep the system prompt and the original context, then the most recent
         # turns. Tool outputs are already truncated above.
@@ -519,19 +587,45 @@ class DefenderAgent:
         }
         if self.reasoning_effort:
             request["extra_body"] = {"reasoning": {"effort": self.reasoning_effort}}
+        self.events.emit("defender", "llm_request", agent_id=self.agent_id, target_class="n/a",
+                         payload={"request_id": self._request_id, "trigger": trigger, "retry_of": self._retry_of,
+                                  "board_message_seqs": message_seqs,
+                                  "observation_seqs": [row["_seq"] for row in new_rows]},
+                         budget=self.budget.snapshot())
         try:
             response = self.client.chat.completions.create(**request)
         except Exception as exc:
+            self.budget.record_failed_request(self.agent_id)
+            self._retry_of = self._request_id
             self.events.emit(
                 "defender",
                 "llm_error",
                 agent_id=self.agent_id,
                 target_class="n/a",
-                payload={"error": repr(exc), "trigger": trigger},
+                payload={"error": repr(exc), "trigger": trigger, "request_id": self._request_id},
+                usage={"input_tokens": None, "output_tokens": None, "cost_usd": None, "reason": "provider_error"},
+                budget=self.budget.snapshot(),
             )
             self.history.pop()
-            return
+            if message_seqs:
+                self.events.emit("defender", "board_delivery", agent_id=self.agent_id,
+                                 target_class="n/a", payload={"request_id": self._request_id,
+                                 "message_seqs": message_seqs, "status": "failed",
+                                 "reason": "provider_error; exposure unknown; IDs retained for retry"})
+            return False
 
+        self._retry_of = None
+        if self._explicit_board_seqs:
+            self.events.emit("defender", "board_read_context", agent_id=self.agent_id,
+                             target_class="n/a", payload={"request_id": self._request_id,
+                             "message_seqs": list(self._explicit_board_seqs), "status": "delivered"})
+            self._explicit_board_seqs = []
+        if message_seqs:
+            self.board.delivered(self.agent_id, message_seqs, self._request_id)
+            self.events.emit("defender", "board_delivery", agent_id=self.agent_id,
+                             target_class="n/a", payload={"request_id": self._request_id,
+                             "message_seqs": message_seqs, "status": "delivered",
+                             "meaning": "included in successful request; understanding/influence unknown"})
         usage = response.usage
         input_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
         output_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
@@ -582,6 +676,8 @@ class DefenderAgent:
             tool="chat.completions",
             target_class="n/a",
             payload={
+                "request_id": self._request_id,
+                "board_context_message_seqs": message_seqs,
                 "trigger": trigger,
                 "content": (message.content or "")[:2000],
                 "tool_names": [c.function.name for c in (message.tool_calls or [])],
@@ -596,62 +692,4 @@ class DefenderAgent:
             },
             budget=self.budget.snapshot(),
         )
-
-class DefenderTeam:
-    """Single log poller; dispatches each defender's stream without racing."""
-
-    def __init__(self, agents: List[DefenderAgent], index: CowrieIndex, budget: DefenderBudget, poll_seconds: float):
-        self.agents = agents
-        self.index = index
-        self.budget = budget
-        self.poll_seconds = poll_seconds
-        self._busy: set = set()
-        self._last_heartbeat = {agent.agent_id: time.time() for agent in agents}
-        self._lock = threading.Lock()
-        self._executor = None
-
-    def _dispatch(self, agent: DefenderAgent, trigger: str, rows: List[Dict[str, Any]]) -> None:
-        with self._lock:
-            if agent.agent_id in self._busy:
-                return
-            self._busy.add(agent.agent_id)
-
-        def work() -> None:
-            try:
-                agent.step(trigger, rows)
-            finally:
-                with self._lock:
-                    self._busy.discard(agent.agent_id)
-
-        if self._executor is None:
-            work()
-        else:
-            self._executor.submit(work)
-
-    def run(self, stop_event: threading.Event) -> None:
-        from concurrent.futures import ThreadPoolExecutor
-
-        self._executor = ThreadPoolExecutor(max_workers=max(1, len(self.agents)))
-        try:
-            while not stop_event.is_set() and not self.budget.exhausted():
-                added = self.index.poll()
-                by_owner: Dict[str, List[Dict[str, Any]]] = {}
-                for row in added:
-                    owner = row.get("_owner")
-                    if owner:
-                        by_owner.setdefault(owner, []).append(row)
-                now = time.time()
-                for agent in self.agents:
-                    rows = by_owner.get(agent.agent_id, [])
-                    if rows:
-                        agent.last_seen_seq = max(agent.last_seen_seq, rows[-1]["_seq"])
-                        self._dispatch(agent, "session_events", rows)
-                        self._last_heartbeat[agent.agent_id] = now
-                    elif now - self._last_heartbeat[agent.agent_id] > 45:
-                        active = any(self.index.owner(s) == agent.agent_id for s in self.index.session_owner)
-                        if active and agent.decisions < self.budget.per_agent_quota:
-                            self._last_heartbeat[agent.agent_id] = now
-                            self._dispatch(agent, "heartbeat", [])
-                stop_event.wait(self.poll_seconds)
-        finally:
-            self._executor.shutdown(wait=True)
+        return True

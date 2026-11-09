@@ -1,0 +1,21 @@
+{
+  "kind": "scratch compatibility preview; not merged research code",
+  "source_base_commit": "a1648bf",
+  "source_status": "concurrent builder uncommitted files; original checkout untouched",
+  "selected_command": "python -m pytest tests/test_board.py tests/test_defenders.py tests/test_notifications.py tests/test_board_view.py tests/test_events.py tests/test_paired_naming.py",
+  "selected_result": "24 passed",
+  "initial_broad_result": "36 passed, 1 unrelated judge-fixture assertion failed; no changes made to judge",
+  "integrated_file_sha256": {
+    "swarmpot/defenders.py": "7f3ca2d80957e61662d8df5c276860ec67d52bc595c6058161b6155dc173ecbb",
+    "swarmpot/events.py": "b52895f8dd1ebb65bdddf8234b930903334f53b5c16fd09f96d8b693260ea581",
+    "swarmpot/episodes.py": "b9cd75bcc9984d7ddb79f79584a567f3723ff6cc685d9f8d5bf03fb90ef2a22a",
+    "swarmpot/cowrie_events.py": "1a108a37dc415ae85ead75df1a1d218e058a0c5c5c0d0c4f7d01bf5c68b6f946",
+    "swarmpot/paired.py": "80859fe1ef124aa5f62a47205c568f189166ff5b54d5a5ad4886704b16bfacf7"
+  },
+  "resolution_notes": [
+    "Preserved schema-v2 event and file-version instrumentation.",
+    "Notification request IDs retained across delivery/decision/edit links; provider ID kept separately.",
+    "Replaced inline unbudgeted provider retry with the versioned scheduler retry, consuming a fresh decision.",
+    "Kept new lifecycle and research changes only in the ignored preview; none committed from the other checkout."
+  ]
+}

@@ -1,0 +1,239 @@
+{
+  "conditions": {
+    "D": {
+      "defender_allowance": {
+        "board_messages": 24,
+        "combined_decisions": 40,
+        "max_cost_usd": 1.5,
+        "max_output_tokens": 2500,
+        "model": "openai/gpt-5-nano",
+        "poll_seconds": 2.0,
+        "reasoning_effort": "minimal",
+        "temperature": 0.2
+      },
+      "defender_count": 2,
+      "notification_policy": {
+        "batch": "wake-causing messages first, then unread; at most 8 messages / 6500 JSON characters",
+        "dispatch": "next scheduler interval; one in-flight request per defender",
+        "enabled": false,
+        "initiation": "board_post(notify=true); default false",
+        "loops": "no self-wakes, no automatic replies, deduplicate by message ID and recipient",
+        "quota": "existing shared decision and cost allowance; no renewal",
+        "receipt": "successful provider response; failed/unknown requests retain pending IDs",
+        "retry": "next scheduler interval, each attempt consumes a decision; no SDK retries",
+        "version": "teammate-wake-v1"
+      },
+      "scheduler_interval_seconds": 2.0,
+      "tool_schemas": [
+        {
+          "function": {
+            "description": "Read structured Cowrie session events assigned to you.",
+            "name": "read_session",
+            "parameters": {
+              "properties": {
+                "limit": {
+                  "description": "Max events, default 40.",
+                  "type": "integer"
+                },
+                "session_id": {
+                  "description": "Optional Cowrie session id filter.",
+                  "type": "string"
+                },
+                "since_seq": {
+                  "description": "Only return events with a larger sequence number.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "List a directory or read a text file inside the decoy filesystem.",
+            "name": "read_decoy_files",
+            "parameters": {
+              "properties": {
+                "max_bytes": {
+                  "description": "Max bytes to return, default 4096.",
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "Absolute decoy path, e.g. /home/admin",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Atomically create or replace a text file inside /home/admin.",
+            "name": "write_decoy_file",
+            "parameters": {
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        }
+      ]
+    },
+    "E": {
+      "defender_allowance": {
+        "board_messages": 24,
+        "combined_decisions": 40,
+        "max_cost_usd": 1.5,
+        "max_output_tokens": 2500,
+        "model": "openai/gpt-5-nano",
+        "poll_seconds": 2.0,
+        "reasoning_effort": "minimal",
+        "temperature": 0.2
+      },
+      "defender_count": 2,
+      "notification_policy": {
+        "batch": "wake-causing messages first, then unread; at most 8 messages / 6500 JSON characters",
+        "dispatch": "next scheduler interval; one in-flight request per defender",
+        "enabled": true,
+        "initiation": "board_post(notify=true); default false",
+        "loops": "no self-wakes, no automatic replies, deduplicate by message ID and recipient",
+        "quota": "existing shared decision and cost allowance; no renewal",
+        "receipt": "successful provider response; failed/unknown requests retain pending IDs",
+        "retry": "next scheduler interval, each attempt consumes a decision; no SDK retries",
+        "version": "teammate-wake-v1"
+      },
+      "scheduler_interval_seconds": 2.0,
+      "tool_schemas": [
+        {
+          "function": {
+            "description": "Read structured Cowrie session events assigned to you.",
+            "name": "read_session",
+            "parameters": {
+              "properties": {
+                "limit": {
+                  "description": "Max events, default 40.",
+                  "type": "integer"
+                },
+                "session_id": {
+                  "description": "Optional Cowrie session id filter.",
+                  "type": "string"
+                },
+                "since_seq": {
+                  "description": "Only return events with a larger sequence number.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "List a directory or read a text file inside the decoy filesystem.",
+            "name": "read_decoy_files",
+            "parameters": {
+              "properties": {
+                "max_bytes": {
+                  "description": "Max bytes to return, default 4096.",
+                  "type": "integer"
+                },
+                "path": {
+                  "description": "Absolute decoy path, e.g. /home/admin",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Atomically create or replace a text file inside /home/admin.",
+            "name": "write_decoy_file",
+            "parameters": {
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "content"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Read messages your teammate posted to the private defender board.",
+            "name": "board_read",
+            "parameters": {
+              "properties": {
+                "since_seq": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Post a short message to the private defender board (your teammate only).",
+            "name": "board_post",
+            "parameters": {
+              "properties": {
+                "body": {
+                  "type": "string"
+                },
+                "notify": {
+                  "default": false,
+                  "description": "Queue a budgeted teammate decision; avoid acknowledgement loops.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "body"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        }
+      ]
+    }
+  },
+  "matched_allowances": true,
+  "matched_scheduler": true,
+  "scope": "communication only; use the full paired audit for world, seed, prompt and model parity",
+  "treatment": "explicit board plus teammate-wake-v1; passive-board runs are a separate condition",
+  "version": "board-config-audit-v1"
+}

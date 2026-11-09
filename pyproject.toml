@@ -17,6 +17,7 @@ dev = [
 [project.scripts]
 swarmpot-episodes = "swarmpot.episodes:main"
 swarmpot-report = "swarmpot.report:main"
+swarmpot-board = "swarmpot.board_view:main"
 
 [tool.uv]
 package = true
@@ -31,3 +32,6 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.setuptools.package-data]
+swarmpot = ["board_ui/*"]
