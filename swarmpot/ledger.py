@@ -387,8 +387,9 @@ def summarize_ledger(path: Optional[Path] = None) -> Dict[str, Any]:
             "exclusion_reason",
             "metrics_path",
         ):
-            if key in record and record[key] is not None:
-                row[key] = record[key]
+            if key in record:
+                if record[key] is not None or (key == "exclusion_reason" and record.get("event") == "finalize"):
+                    row[key] = record[key]
         if record.get("status") in ("started", "prepared") or record.get("started"):
             row["started"] = True
         if (

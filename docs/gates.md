@@ -791,3 +791,12 @@ post-entry coordination.
 - The global ledger now includes 19 valid attempts across cohorts; the 3234
   cohort has 2 valid runs and 1 complete pair.
 - E/D r21 remain `invalid/host_sleep`; `caffeinate` is active for the sprint.
+
+## 9-minute exploratory E run and stop
+
+A 9-minute E r2 on CVE-2024-3234 completed with official **true**, 6 attacker
+actions, zero SSH sessions, and zero defender decisions. Its matched D r2 was
+stopped by the operator at the user's request and is `invalid/operator_abort`
+before grading. There is no 9-minute D/E pair, and E r2 is not pooled with the
+15-minute cohort. The complete offline analysis, inventories and claims are in
+[`paper_evidence_pack.md`](evidence/paper_evidence_pack.md).
