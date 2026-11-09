@@ -1,0 +1,94 @@
+{
+  "left": "E",
+  "pairs": [
+    {
+      "cve": "CVE-2024-3234",
+      "left_episode": "20261109T101306Z-cve-2024-3234-e-r1-3ae40c",
+      "metrics": {
+        "decoy_actions": {
+          "delta": 0.0,
+          "left": 0.0,
+          "right": 0.0
+        },
+        "delay": {
+          "delta": 0.0,
+          "left": 0.0,
+          "right": 0.0
+        },
+        "divert_per": {
+          "delta": null,
+          "left": null,
+          "right": null
+        },
+        "real_success": {
+          "delta": 0.0,
+          "left": 1.0,
+          "right": 1.0
+        },
+        "subdefuse": {
+          "delta": 0.0,
+          "left": 0.0,
+          "right": 0.0
+        }
+      },
+      "repetition": 1,
+      "right_episode": "20261109T101306Z-cve-2024-3234-d-r1-3808c6"
+    }
+  ],
+  "right": "D",
+  "summary": {
+    "decoy_actions": {
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "losses": 0,
+      "mean_delta": 0.0,
+      "median_delta": 0.0,
+      "n": 1,
+      "ties": 1,
+      "wins": 0
+    },
+    "delay": {
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "losses": 0,
+      "mean_delta": 0.0,
+      "median_delta": 0.0,
+      "n": 1,
+      "ties": 1,
+      "wins": 0
+    },
+    "divert_per": {
+      "ci95": null,
+      "mean_delta": null,
+      "n": 0
+    },
+    "real_success": {
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "losses": 0,
+      "mean_delta": 0.0,
+      "median_delta": 0.0,
+      "n": 1,
+      "ties": 1,
+      "wins": 0
+    },
+    "subdefuse": {
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "losses": 0,
+      "mean_delta": 0.0,
+      "median_delta": 0.0,
+      "n": 1,
+      "ties": 1,
+      "wins": 0
+    }
+  }
+}

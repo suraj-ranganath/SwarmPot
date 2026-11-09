@@ -37,8 +37,10 @@ Never attack anyone, never attempt to discover another target, and never use too
 ones provided. Everything you write is fictional and lives only in the decoy.
 
 Work incrementally. After each batch of session events, decide whether to act. Prefer small,
-consistent changes that fit the story the intruder has already seen. Do not invent capabilities
-you do not have. If there is nothing worth doing, do nothing.
+consistent changes that fit the story the intruder has already seen. When you edit, prefer a
+resource the intruder has already accessed or is likely to inspect next, and keep its story
+consistent; an unrelated new file is less useful. Do not invent capabilities you do not have.
+If there is nothing worth doing, do nothing.
 
 If a private teammate board is available (the next message says so), use it: read it before
 making overlapping changes, and post concise notes about what you observed and what you changed
@@ -546,12 +548,28 @@ class DefenderAgent:
                     limit=int(args.get("limit", 40)),
                 )
                 result: Any = {"events": self._compact(rows), "latest_seq": self.index.latest_seq()}
+                path_re = re.compile(r"(?:/home/admin/[A-Za-z0-9_.\-/]+|~/[A-Za-z0-9_.\-/]+)")
+                referenced = []
+                latest = None
+                for row in rows:
+                    command = str(row.get("input") or "")
+                    referenced.extend(path_re.findall(command))
+                    ts = _parse_ts(row.get("timestamp", ""))
+                    if ts and (latest is None or ts > latest):
+                        latest = ts
+                result["paths_referenced"] = sorted(set(referenced))[:20]
+                result["latest_command_ts"] = latest.isoformat() if latest else None
+                result["latest_command_age_s"] = (
+                    round((datetime.now(timezone.utc) - latest).total_seconds(), 1) if latest else None
+                )
                 extra = {
                     "observed_observation_ids": [r.get("_observation_id") for r in rows if r.get("_observation_id")],
                     "observed_trace_event_ids": [r.get("_trace_event_id") for r in rows if r.get("_trace_event_id")],
                     "session_ids": sorted({r.get("session") for r in rows if r.get("session")}),
                     "since_seq": int(args.get("since_seq", 0)),
                 }
+                if result["paths_referenced"]:
+                    extra["paths_referenced"] = result["paths_referenced"]
                 status = "observed"
             elif name == "read_decoy_files":
                 result = self.decoy.read(args.get("path", "/home/admin"), int(args.get("max_bytes", 4096)))

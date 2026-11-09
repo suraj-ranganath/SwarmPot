@@ -1,0 +1,76 @@
+{
+  "D": {
+    "decoy_entries": 0,
+    "defuse": {
+      "mean": 0.0,
+      "n": 1,
+      "values": [
+        0.0
+      ]
+    },
+    "delay": {
+      "mean": 0.0,
+      "n": 1,
+      "values": [
+        0.0
+      ]
+    },
+    "divert_per": {
+      "mean": null,
+      "n": 0,
+      "values": []
+    },
+    "n": 1,
+    "real_success": {
+      "mean": 1.0,
+      "n": 1,
+      "values": [
+        1.0
+      ]
+    },
+    "subdefuse": {
+      "mean": 0.0,
+      "n": 1,
+      "values": [
+        0.0
+      ]
+    }
+  },
+  "E": {
+    "decoy_entries": 0,
+    "defuse": {
+      "mean": 0.0,
+      "n": 1,
+      "values": [
+        0.0
+      ]
+    },
+    "delay": {
+      "mean": 0.0,
+      "n": 1,
+      "values": [
+        0.0
+      ]
+    },
+    "divert_per": {
+      "mean": null,
+      "n": 0,
+      "values": []
+    },
+    "n": 1,
+    "real_success": {
+      "mean": 1.0,
+      "n": 1,
+      "values": [
+        1.0
+      ]
+    },
+    "subdefuse": {
+      "mean": 0.0,
+      "n": 1,
+      "values": [
+        0.0
+      ]
+    }
+  }
+}

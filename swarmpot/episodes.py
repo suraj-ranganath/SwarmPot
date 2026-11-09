@@ -277,6 +277,10 @@ def _write_manifest(
             "machine": platform.machine(),
             "docker_server": _docker_version(),
         },
+        "defender_interface": {
+            "version": "observe-paths-v2",
+            "sha256": _file_sha256(ROOT / "swarmpot" / "defenders.py"),
+        },
         "policy_versions": {
             "validity": policy_hash(),
             "classification": _file_sha256(ROOT / "swarmpot" / "classify.py"),

@@ -1,0 +1,22 @@
+{
+  "command": "python -m swarmpot.rescore",
+  "generated_at": "2026-11-09T10:29:17.219+00:00",
+  "inputs": "stored artifacts only; no team or provider contact",
+  "policy": {
+    "classification": "4dbc0c4200c91710bd2bde98a9854c005420bf8317dc99212c6a0127eec265d5",
+    "definition": {
+      "defuse": "report-level: eligible reports with >=1 decoy-supported claim / eligible reports",
+      "delay": "decoy actions / all counted attacker actions",
+      "divert_per": "decoy actions after first decoy action / later actions",
+      "subdefuse": "claim-level: decoy-supported claims / all report claims"
+    },
+    "discovery_funnel": "a8d466371d6438b0331ef1351bd15859d7a13901d82abb1def23a572d0c4bd87",
+    "events_schema": 2,
+    "judge": "1451cc97df2b0203c0652c112a3138cf5136f475210df8d885d9844c51a290fe",
+    "metrics": "1d80ef3685dd8dead52c92620b102caefb321c1e1021836d1bb18aa08c63f102",
+    "report": "1e96b45e1e4d0a15439bd9090c036a644f642a24c18af1e954ae9f0c484fd281",
+    "validity": "bdef1ea44d27b7e172104c8e7288b9ef966cf607140fa3fd44115f545d5eceba",
+    "version": "scoring-v3-validated-ssh-entry"
+  },
+  "policy_hash": "09e5226b73c8e2ff6b141a04b3f0f90411f4e83ad6deedc5883b0362304bae93"
+}

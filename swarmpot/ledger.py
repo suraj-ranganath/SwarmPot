@@ -39,6 +39,7 @@ VALIDITY_POLICY = {
         "config_mismatch",
         "operator_abort",
         "no_attacker_actions",
+        "host_sleep",
     ],
     "notes": (
         "Infrastructure failure, a missing verdict, and an unstarted episode are never "
