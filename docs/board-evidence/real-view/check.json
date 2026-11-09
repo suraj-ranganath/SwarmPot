@@ -1,0 +1,126 @@
+{
+  "source": "primary checkout runs directory; started benchmark episodes only",
+  "experiment_count": 8,
+  "episodes": [
+    {
+      "episode_id": "20261109T022223Z-cve-2024-2624-d-r5-0c6910",
+      "arm": "D",
+      "created_at": "2026-11-09T02:22:23.770+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T022223Z-cve-2024-2624-d-r5-0c6910",
+      "repetition": 5,
+      "attempt_status": "completed",
+      "board_message_count": null,
+      "loaded_message_count": 0,
+      "recorded_event_count": 17
+    },
+    {
+      "episode_id": "20261109T021305Z-cve-2024-2624-e-r5-0bd2e7",
+      "arm": "E",
+      "created_at": "2026-11-09T02:13:05.689+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T021305Z-cve-2024-2624-e-r5-0bd2e7",
+      "repetition": 5,
+      "attempt_status": "completed",
+      "board_message_count": 0,
+      "loaded_message_count": 0,
+      "recorded_event_count": 15
+    },
+    {
+      "episode_id": "20261109T013534Z-cve-2024-2624-e-r1-975729",
+      "arm": "E",
+      "created_at": "2026-11-09T01:35:34.595+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T013534Z-cve-2024-2624-e-r1-975729",
+      "repetition": 1,
+      "attempt_status": "backfilled",
+      "board_message_count": 0,
+      "loaded_message_count": 0,
+      "recorded_event_count": 13
+    },
+    {
+      "episode_id": "20261109T012343Z-cve-2024-2624-d-r1-35cb15",
+      "arm": "D",
+      "created_at": "2026-11-09T01:23:43.534+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T012343Z-cve-2024-2624-d-r1-35cb15",
+      "repetition": 1,
+      "attempt_status": "backfilled",
+      "board_message_count": null,
+      "loaded_message_count": 0,
+      "recorded_event_count": 13
+    },
+    {
+      "episode_id": "20261109T011246Z-cve-2024-2624-b-r1-e954b4",
+      "arm": "B",
+      "created_at": "2026-11-09T01:12:46.622+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T011246Z-cve-2024-2624-b-r1-e954b4",
+      "repetition": 1,
+      "attempt_status": "backfilled",
+      "board_message_count": null,
+      "loaded_message_count": 0,
+      "recorded_event_count": 13
+    },
+    {
+      "episode_id": "20261109T010406Z-cve-2024-2624-b-r1-5f989c",
+      "arm": "B",
+      "created_at": "2026-11-09T01:04:06.027+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T010406Z-cve-2024-2624-b-r1-5f989c",
+      "repetition": 1,
+      "attempt_status": "backfilled",
+      "board_message_count": null,
+      "loaded_message_count": 0,
+      "recorded_event_count": 13
+    },
+    {
+      "episode_id": "20261109T005643Z-cve-2024-2624-a-r1-3a9ae6",
+      "arm": "A",
+      "created_at": "2026-11-09T00:56:43.023+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T005643Z-cve-2024-2624-a-r1-3a9ae6",
+      "repetition": 1,
+      "attempt_status": "backfilled",
+      "board_message_count": null,
+      "loaded_message_count": 0,
+      "recorded_event_count": 13
+    },
+    {
+      "episode_id": "20261109T005505Z-cve-2024-2624-a-r1-343d41",
+      "arm": "A",
+      "created_at": "2026-11-09T00:55:05.605+00:00",
+      "cve": "CVE-2024-2624",
+      "id": "20261109T005505Z-cve-2024-2624-a-r1-343d41",
+      "repetition": 1,
+      "attempt_status": "backfilled",
+      "board_message_count": null,
+      "loaded_message_count": 0,
+      "recorded_event_count": 13
+    }
+  ],
+  "prepared_hosted_verification_run_hidden": true,
+  "read_only_source_hashes_unchanged": true,
+  "source_sha256": {
+    "20261109T022223Z-cve-2024-2624-d-r5-0c6910/events.jsonl": "589557768b44d3f3df411edacb1243bba130568fb3207163c31c9afb29b68427",
+    "20261109T021305Z-cve-2024-2624-e-r5-0bd2e7/events.jsonl": "5443938a705babc34138eb5d6be52acfdbc3949f20c47eec38abf2a555639c11",
+    "20261109T021305Z-cve-2024-2624-e-r5-0bd2e7/board.sqlite": "94118fe20fcc2e1d7a31564d033c9edcf86307ccfe722223cf143135a65eb9d2",
+    "20261109T013534Z-cve-2024-2624-e-r1-975729/events.jsonl": "0e274595d058f4e559a2b53e25578a09592f49919e0f54c2f3ac96331530fa28",
+    "20261109T013534Z-cve-2024-2624-e-r1-975729/board.sqlite": "94118fe20fcc2e1d7a31564d033c9edcf86307ccfe722223cf143135a65eb9d2",
+    "20261109T012343Z-cve-2024-2624-d-r1-35cb15/events.jsonl": "e751c2c230f146c0b100cd75f17915decf22f5565c31cd21bc35e154d0085d95",
+    "20261109T011246Z-cve-2024-2624-b-r1-e954b4/events.jsonl": "9846965bf8fc1d6bcd29954a2c29fbe8eadc7bda0f362450afa8b8ddb88eb6d4",
+    "20261109T010406Z-cve-2024-2624-b-r1-5f989c/events.jsonl": "895130f73768e568afa27a96e790ea20bad67ecb252da2581ec7e150b83e06ed",
+    "20261109T005643Z-cve-2024-2624-a-r1-3a9ae6/events.jsonl": "6e544b62da8c20d5f354e742cf3f8aa2f1c24875cd19f8953a33005d4145ad96",
+    "20261109T005505Z-cve-2024-2624-a-r1-343d41/events.jsonl": "cc05b900db2225cc6de80667de31cc253a92841bd23454f3c36f40dce93573b6"
+  },
+  "screenshots": "actual experiment data, no fixture records",
+  "browser_checks": [
+    "activity channel",
+    "event details",
+    "arm selection",
+    "empty real E board",
+    "mobile layout without horizontal overflow"
+  ],
+  "tests": "39 unit/integration tests passed after rebasing onto the concurrent builder commits; isolated browser acceptance check passed",
+  "upstream_test_data": "SWARMPOT_CVEBENCH_DIR points at the existing pinned CVE-Bench checkout for read-only paired-audit tests"
+}

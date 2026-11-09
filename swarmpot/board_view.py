@@ -42,7 +42,8 @@ def read_object(path):
     try:
         if path.stat().st_size > 1024 * 1024:
             return {}
-        return json.loads(path.read_text())
+        value = json.loads(path.read_text())
+        return value if isinstance(value, dict) else {}
     except (OSError, ValueError):
         return {}
 
@@ -90,26 +91,79 @@ def public_event(row):
                   | {'payload': shown})
 
 
-def episode_list(root, offset=0):
+
+def experiment_evidence(path, manifest):
+    """Show started benchmark episodes, never standalone or prepared test runs.
+
+    An API caller cannot turn fixtures on. Explicit fixture access exists only
+    as a server construction option for the isolated developer browser check.
+    A hosted model alone is not evidence of a benchmark episode.
+    """
+    labels = ' '.join(str(manifest.get(key, '')) for key in
+                      ('evidence_kind', 'purpose', 'mode', 'run_kind'))
+    if re.search(r'fixture|smoke|synthetic|scripted|stub|demo|verification|test', labels, re.I):
+        return False
+    if not re.fullmatch(r'CVE-\d{4}-\d{4,}', str(manifest.get('cve', '')), re.I):
+        return False
+    if manifest.get('arm') not in ('A', 'B', 'C', 'D', 'E'):
+        return False
+    attempt = read_object(path / 'attempt.json')
+    if (attempt.get('episode_id') == manifest.get('episode_id')
+            and attempt.get('attacker_started') is True):
+        return True
+    # Legacy manifests have no attempt record. Read bounded start/tail windows;
+    # do not mistake health checks, grading, or defender smoke traffic for a run.
+    try:
+        with (path / 'events.jsonl').open('rb') as handle:
+            head = handle.read(256 * 1024)
+    except OSError:
+        return False
+    for line in head.splitlines():
+        try:
+            row = json.loads(line)
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if (row.get('episode_id') == manifest.get('episode_id')
+                and row.get('kind') == 'lifecycle'
+                and row.get('payload', {}).get('stage') == 'attacker_started'):
+            return True
+    return False
+
+
+def board_count(path, episode_id):
+    db = path.resolve() / 'board.sqlite'
+    if not db.is_file() or db.is_symlink():
+        return None
+    try:
+        with sqlite3.connect(db.as_uri() + '?mode=ro', uri=True, timeout=0.2) as conn:
+            return conn.execute('SELECT COUNT(*) FROM messages WHERE episode=? AND team=?',
+                                (episode_id, 'defenders')).fetchone()[0]
+    except sqlite3.Error:
+        return None
+
+def episode_list(root, offset=0, *, include_fixtures=False):
     # Directory names only until selection; do not load all historical episodes.
     entries = sorted((p for p in root.iterdir() if p.is_dir() and not p.is_symlink()),
                      key=lambda p: p.name, reverse=True) if root.exists() else []
     out = []
     for path in entries[offset:offset + 100]:
         manifest = read_object(path / 'manifest.json')
-        if manifest:
+        if manifest and (include_fixtures or experiment_evidence(path, manifest)):
+            attempt = read_object(path / "attempt.json")
             out.append({k: manifest.get(k) for k in ('episode_id', 'arm', 'created_at', 'cve')}
-                       | {'id': path.name, 'evidence_kind': manifest.get('evidence_kind')})
+                       | {'id': path.name, 'repetition': manifest.get('repetition'),
+                          'attempt_status': attempt.get('status'),
+                          'board_message_count': board_count(path, manifest.get('episode_id'))})
     return {'episodes': redact(out), 'next_offset': offset + 100 if len(entries) > offset + 100 else None}
 
 
-def snapshot(root, episode, after=0):
+def snapshot(root, episode, after=0, *, include_fixtures=False):
     path = (root / episode).resolve()
     if path.parent != root.resolve() or not path.is_dir() or (root / episode).is_symlink():
         raise ValueError('unknown episode')
     manifest = read_object(path / 'manifest.json')
-    if not manifest:
-        raise ValueError('episode manifest unavailable')
+    if not manifest or not (include_fixtures or experiment_evidence(path, manifest)):
+        raise ValueError('started experiment evidence unavailable')
     episode_id = manifest.get('episode_id')
     rows, windowed = audit_tail(path / 'events.jsonl')
     # Reject mixed episode data; the GUI never crosses team namespaces.
@@ -141,6 +195,11 @@ def snapshot(root, episode, after=0):
     else:
         missing.append('No board database recorded (expected when board is disabled)')
     budget = next((r['budget'] for r in reversed(rows) if r.get('budget')), None)
+    if budget is None:
+        # Completed legacy episodes sometimes recorded only the final budget in
+        # metrics. This is recorded accounting, not an inferred live status.
+        budget = read_object(path / 'metrics.json').get('audit', {}).get('defender', {}).get('budget')
+    attempt = read_object(path / 'attempt.json')
     ids = sorted({r['agent_id'] for r in rows if r.get('agent_id')})
     arm_cfg = manifest.get('config', {}).get('arms', {}).get(manifest.get('arm'), {})
     for i in range(arm_cfg.get('defenders', 0)):
@@ -171,9 +230,11 @@ def snapshot(root, episode, after=0):
     if not any(r.get('kind') == 'defender_status' for r in rows):
         missing.append('Defender status not recorded; current activity is unknown')
     stage = next((r.get('payload', {}).get('stage') for r in reversed(rows) if r.get('kind') == 'lifecycle'), None)
-    return redact({'episode': {k: manifest.get(k) for k in ('episode_id', 'arm', 'cve', 'created_at', 'evidence_kind')},
+    return redact({'episode': {k: manifest.get(k) for k in ('episode_id', 'arm', 'cve', 'created_at', 'repetition')},
+                   'attempt_status': attempt.get('status'),
+                   'board_enabled': arm_cfg.get('board'),
                    'policy': manifest.get('board_notification_policy'), 'stage': stage,
-                   'messages': messages, 'next_after': messages[-1]['seq'] if messages else after,
+                   'messages': messages, 'message_count': board_count(path, episode_id), 'next_after': messages[-1]['seq'] if messages else after,
                    'has_more': len(messages) == 100, 'notifications': notifications,
                    'notification_evidence_complete': notifications_known,
                    'receipts': receipts, 'cards': cards, 'budget': budget,
@@ -181,7 +242,7 @@ def snapshot(root, episode, after=0):
                    'audit_windowed': windowed})
 
 
-def make_server(root: Path, port: int = 8765):
+def make_server(root: Path, port: int = 8765, *, include_fixtures: bool = False):
     root = root.resolve()
 
     class Handler(BaseHTTPRequestHandler):
@@ -207,9 +268,9 @@ def make_server(root: Path, port: int = 8765):
             query = parse_qs(url.query)
             try:
                 if url.path == '/api/episodes':
-                    return self.reply(200, episode_list(root, max(0, int(query.get('offset', ['0'])[0]))))
+                    return self.reply(200, episode_list(root, max(0, int(query.get('offset', ['0'])[0])), include_fixtures=include_fixtures))
                 if url.path == '/api/snapshot':
-                    return self.reply(200, snapshot(root, query.get('episode', [''])[0], max(0, int(query.get('after', ['0'])[0]))))
+                    return self.reply(200, snapshot(root, query.get('episode', [''])[0], max(0, int(query.get('after', ['0'])[0])), include_fixtures=include_fixtures))
                 asset = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}.get(url.path)
                 if asset:
                     kind = {'index.html': 'text/html; charset=utf-8', 'app.js': 'text/javascript; charset=utf-8', 'style.css': 'text/css; charset=utf-8'}[asset]

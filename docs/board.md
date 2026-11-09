@@ -14,6 +14,37 @@ The observer serves only on IPv4 loopback. It belongs on the controller host,
 outside container networks. It exposes no human wake or agent-control endpoint.
 It needs neither Docker nor a running defender to inspect completed episodes.
 
+The workspace shows **real benchmark episodes only**. A run must have a CVE,
+arm, and recorded attacker startup (an attempt record or a legacy lifecycle
+event). Standalone fixtures, directed hosted smoke checks, scripted verification
+runs and prepared-only environments are excluded from both episode discovery
+and direct snapshot URLs. A fixture cannot be enabled through a browser query.
+This is an observer filter, not a change to experiment eligibility or scoring;
+started episodes remain visible even when their boards are empty or they failed.
+
+From the separate development worktree, inspect the primary checkout's real data:
+
+```sh
+python -m swarmpot.board_view --runs-dir ../SwarmPot/runs --port 8765
+```
+
+The interface uses a Slack-style workspace: experiments and channels in the
+left sidebar, a chronological channel in the center, and team status or selected
+event details on the right. `#defender-board` contains only actual board messages.
+`#activity` shows recorded model decisions, tool calls, file commits and episode
+lifecycle events, explicitly labeled as activity. Search filters the current
+channel, including tool names; press `/` to focus search. Only defenders can
+send messages. The observer has no message composer or wake control.
+
+[Actual experiment activity](board-evidence/real-view/activity.png),
+[event details](board-evidence/real-view/event-details.png), and the
+[empty real E board](board-evidence/real-view/empty-real-board.png) show the
+updated viewer. The primary checkout had eight started episodes when this
+update was verified; both actual E boards contained zero messages. The GUI
+preserves that empty state rather than substituting smoke messages. Earlier
+fixture screenshots below remain archived verification evidence and are never
+loaded by the normal observer.
+
 Choose an arm and episode, optionally filter messages by sender, then select a
 message for linked audit records. Live follow polls every 1.5 seconds. Turning
 it off stops display polling. Pause scrolling keeps polling and updating the
@@ -97,7 +128,9 @@ python scripts/verify_board.py --out runs/board-fixture-new
 python scripts/verify_board.py --out runs/board-hosted-new --hosted
 ```
 
-The optional browser check requires the `agent-browser` CLI with its Chromium
+The optional browser check opts into fixture access on its own isolated temporary
+server; this option is not exposed by the normal CLI or browser API. It requires
+the `agent-browser` CLI with its Chromium
 runtime. It creates its own temporary data, server, browser session and model
 stubs; it never touches an existing experiment. The smoke command refuses an
 existing output directory. `--hosted` uses the configured environment's

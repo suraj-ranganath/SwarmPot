@@ -3,87 +3,222 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SwarmPot · Defender board</title>
+    <title>SwarmPot · Defender workspace</title>
     <link rel="stylesheet" href="/style.css" />
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <header>
-      <a class="brand" href="/">SP<span> / OBSERVATORY</span></a>
-      <div class="private">LOCAL ONLY <span>·</span> READ ONLY</div>
-      <div id="connection" role="status">Connecting…</div>
-    </header>
-    <main>
-      <section class="intro">
-        <div>
-          <p class="eyebrow">SWARMPOT / DEFENDER COMMUNICATION</p>
-          <h1>A shared story.<br /><em>Every exchange recorded.</em></h1>
+    <div class="workspace" id="workspace">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="SwarmPot home"
+          ><svg viewBox="0 0 28 28" aria-hidden="true">
+            <path d="M7 8 21 8 14 21Z" />
+            <circle cx="7" cy="8" r="3" />
+            <circle cx="21" cy="8" r="3" />
+            <circle cx="14" cy="21" r="3" /></svg
+          ><span>SwarmPot</span
+          ><span class="workspace-tag">DEFENDER WORKSPACE</span></a
+        >
+        <label class="search"
+          ><svg viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="8.5" cy="8.5" r="5.5" />
+            <path d="m13 13 4 4" /></svg
+          ><input
+            id="search"
+            type="search"
+            placeholder="Search this channel"
+            aria-label="Search current channel"
+          /><kbd>/</kbd></label
+        >
+        <div id="connection" role="status">Connecting…</div>
+        <span
+          class="observer-avatar"
+          title="Read-only observer"
+          aria-label="Read-only observer"
+          >OB</span
+        >
+      </header>
+      <nav class="rail" aria-label="Workspace">
+        <div class="workspace-icon">S<span></span></div>
+        <span class="rail-mark" aria-hidden="true">⌘</span
+        ><span class="rail-label">Workspace</span>
+        <div class="rail-bottom" title="Local observer">⌂</div>
+      </nav>
+      <aside class="sidebar" aria-label="Episode navigation" id="sidebar">
+        <div class="workspace-heading">
+          <div>
+            <strong>Defender team</strong
+            ><span><i></i> Experiment data only</span>
+          </div>
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="m6 8 4 4 4-4" />
+          </svg>
         </div>
-        <p class="intro-note">
-          Observe the team’s private board.<br />Wake-ups originate from agent
-          tools.<br />Viewing never changes a run.
-        </p>
-      </section>
-      <section class="selectors" aria-label="Run selection">
-        <label
-          >ARM<select id="arm">
+        <div class="run-selector">
+          <label for="arm">EXPERIMENT ARM</label
+          ><select id="arm">
             <option value="">All arms</option>
             <option>A</option>
             <option>B</option>
             <option>C</option>
             <option>D</option>
-            <option>E</option>
-          </select></label
-        ><label class="run"
-          >EPISODE<select id="episode">
-            <option value="">Loading runs…</option>
-          </select></label
-        ><button id="more-runs" hidden>Older episodes</button>
-        <div id="run-meta"></div>
-      </section>
-      <div id="notice" role="status" hidden></div>
-      <section id="cards" aria-label="Defender statuses"></section>
-      <section class="board">
-        <div class="board-head">
+            <option>E</option></select
+          ><label for="episode">CURRENT EPISODE</label
+          ><select id="episode">
+            <option value="">Loading experiments…</option>
+          </select>
+        </div>
+        <div class="sidebar-section">
+          <h2>Channels</h2>
+          <button id="channel-board" class="channel" aria-pressed="false">
+            <span class="hash">#</span><span>defender-board</span
+            ><span class="channel-count" id="board-count">—</span></button
+          ><button
+            id="channel-activity"
+            class="channel active"
+            aria-pressed="true"
+          >
+            <span class="hash">#</span><span>activity</span
+            ><span class="channel-count" id="activity-count">—</span>
+          </button>
+        </div>
+        <div class="sidebar-section">
+          <h2>Defenders <span id="member-count"></span></h2>
+          <div id="members"></div>
+        </div>
+        <div class="sidebar-section episode-section">
+          <h2>Recent experiments</h2>
+          <div id="runs"></div>
+          <button id="more-runs" class="more-runs" hidden>
+            Load older experiments
+          </button>
+        </div>
+        <div class="sidebar-foot">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <rect x="5" y="9" width="10" height="8" rx="2" />
+            <path d="M7 9V6a3 3 0 0 1 6 0v3" />
+          </svg>
           <div>
-            <p class="eyebrow">PRIVATE CHANNEL / DEFENDERS</p>
-            <h2>Message ledger <span id="count">0</span></h2>
+            Private defender workspace<span>Local access · Read only</span>
+          </div>
+        </div>
+      </aside>
+      <main class="conversation">
+        <header class="channel-header">
+          <button
+            id="sidebar-toggle"
+            class="icon-button"
+            aria-label="Toggle episode navigation"
+            aria-expanded="false"
+          >
+            ☰
+          </button>
+          <div class="channel-heading">
+            <h1>
+              <span>#</span> <span id="channel-title">activity</span
+              ><span class="private-label">PRIVATE</span>
+            </h1>
+            <p id="run-meta">
+              Select an experiment to inspect its recorded communication.
+            </p>
+          </div>
+          <button
+            id="team-toggle"
+            class="team-toggle"
+            aria-label="Show episode overview"
+          >
+            <span id="header-members"></span><span>Episode details</span
+            ><span aria-hidden="true">ⓘ</span>
+          </button>
+        </header>
+        <div class="channel-toolbar">
+          <div class="channel-tabs">
+            <span class="active-tab" id="tab-label">Activity</span
+            ><span id="count">0 records</span>
           </div>
           <div class="controls">
             <label class="sr" for="defender">Filter by defender</label
             ><select id="defender">
               <option value="">All defenders</option></select
-            ><button id="follow" aria-pressed="true">Live follow on</button
+            ><button id="follow" aria-pressed="true">
+              <span class="follow-dot"></span>Live follow on</button
             ><button id="pause" aria-pressed="false">Pause scrolling</button>
           </div>
         </div>
-        <div class="ledger">
-          <div class="feed-wrap">
-            <div
-              id="feed"
-              tabindex="0"
-              aria-label="Chronological message feed"
-            ></div>
-            <button id="older" hidden>Load next 100 messages</button>
-          </div>
-          <aside id="details" aria-label="Message details">
-            <p class="eyebrow">EVIDENCE INSPECTOR</p>
-            <h3>The record, in context.</h3>
-            <p>
-              Select a message to inspect wake-ups, context delivery, decisions
-              and file edits.
-            </p>
-            <p class="caution">
-              Context delivery shows that content was supplied to a successful
-              request. Understanding and influence remain unknown.
-            </p>
-          </aside>
+        <div class="run-strip">
+          <span id="run-state">Recorded experiment</span
+          ><span id="source-label">Experiment logs</span>
         </div>
-      </section>
-      <footer>
-        <span>SQLite + audit logs remain authoritative.</span
-        ><span id="policy">Notification policy: evidence unavailable</span>
-      </footer>
-    </main>
+        <div class="feed-wrap">
+          <div
+            id="feed"
+            tabindex="0"
+            aria-label="Chronological message feed"
+          ></div>
+          <button id="older" hidden>Load next 100 messages</button>
+        </div>
+        <div class="composer-wrap">
+          <div class="read-only-composer">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="5" y="9" width="10" height="8" rx="2" />
+              <path d="M7 9V6a3 3 0 0 1 6 0v3" /></svg
+            ><span
+              >You’re observing this channel. Only defenders can send
+              messages.</span
+            ><span class="read-only-tag">READ ONLY</span>
+          </div>
+          <div class="channel-foot">
+            <span>SQLite and audit logs are the source of truth.</span
+            ><span id="updated">Awaiting records</span>
+          </div>
+        </div>
+      </main>
+      <aside class="inspector" aria-label="Episode details">
+        <header class="inspector-header">
+          <h2 id="inspector-title">Episode overview</h2>
+          <button
+            class="icon-button"
+            id="close-details"
+            aria-label="Close details"
+          >
+            ×
+          </button>
+        </header>
+        <div class="inspector-scroll">
+          <div id="overview">
+            <section class="episode-about">
+              <span class="section-kicker">CURRENT EXPERIMENT</span>
+              <h3 id="about-cve">No episode selected</h3>
+              <p id="about-episode"></p>
+              <div id="about-tags"></div>
+            </section>
+            <section class="team-section">
+              <h3>Defender team</h3>
+              <div id="cards" aria-label="Defender statuses"></div>
+            </section>
+            <section class="recent-section">
+              <h3>Recent activity</h3>
+              <div id="recent"></div>
+            </section>
+            <section class="record-section">
+              <h3>About this record</h3>
+              <p id="policy">Notification policy not recorded</p>
+              <details id="evidence-note" hidden>
+                <summary>Available evidence</summary>
+                <div id="notice" role="status"></div>
+              </details>
+              <p class="fine-print">
+                A context receipt records delivery to a model request. It does
+                not establish understanding or influence.
+              </p>
+            </section>
+          </div>
+          <div id="details" aria-label="Message details" hidden></div>
+        </div>
+        <footer class="inspector-footer">
+          <span class="record-dot"></span> Read-only observation
+        </footer>
+      </aside>
+    </div>
   </body>
 </html>
