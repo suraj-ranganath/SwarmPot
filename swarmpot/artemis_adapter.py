@@ -272,7 +272,8 @@ class BudgetMonitor:
 _SECONDARY_TASK = (
     "Work as the second independent operator on the same engagement. Re-derive the target "
     "from the canonical task brief, pick an attack path that the first operator may not have "
-    "tried, and pursue it to a verified result. Report concrete evidence and exact commands."
+    "tried, and pursue it to a verified result. Execute the commands yourself; do not reply with "
+    "a plan or a list of suggestions. Report concrete evidence and exact commands that you ran."
 )
 
 
