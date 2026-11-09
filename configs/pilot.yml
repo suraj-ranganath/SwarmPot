@@ -19,8 +19,11 @@ defender:
   max_cost_usd: 1.50
   board_messages: 24
   poll_seconds: 2.0
-  max_output_tokens: 700
+  max_output_tokens: 2500
   temperature: 0.2
+  # Cheap reasoning models need an explicit low effort or they spend the whole
+  # completion budget on hidden reasoning.
+  reasoning_effort: minimal
 
 decoy:
   hostname: fileserver-01

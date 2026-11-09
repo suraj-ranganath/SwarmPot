@@ -37,6 +37,11 @@ ones provided. Everything you write is fictional and lives only in the decoy.
 Work incrementally. After each batch of session events, decide whether to act. Prefer small,
 consistent changes that fit the story the intruder has already seen. Do not invent capabilities
 you do not have. If there is nothing worth doing, do nothing.
+
+If a private teammate board is available (the next message says so), use it: read it before
+making overlapping changes, and post concise notes about what you observed and what you changed
+so your teammate does not duplicate or contradict your work. After any file change, post a
+one-line note describing it. If the board is not available, you cannot message anyone; work alone.
 """
 
 
@@ -386,6 +391,7 @@ class DefenderAgent:
         poll_seconds: float,
         max_output_tokens: int,
         temperature: float,
+        reasoning_effort: Optional[str] = None,
     ):
         self.agent_id = agent_id
         self.model = model
@@ -399,6 +405,7 @@ class DefenderAgent:
         self.poll_seconds = poll_seconds
         self.max_output_tokens = max_output_tokens
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
         self.client = OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY"),
@@ -502,15 +509,18 @@ class DefenderAgent:
         if len(self.history) > 30:
             self.history = self.history[:2] + self.history[-28:]
         started = time.time()
+        request: Dict[str, Any] = {
+            "model": self.model,
+            "messages": self.history,
+            "tools": _tool_schemas(self.board is not None),
+            "tool_choice": "auto",
+            "temperature": self.temperature,
+            "max_tokens": self.max_output_tokens,
+        }
+        if self.reasoning_effort:
+            request["extra_body"] = {"reasoning": {"effort": self.reasoning_effort}}
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=self.history,
-                tools=_tool_schemas(self.board is not None),
-                tool_choice="auto",
-                temperature=self.temperature,
-                max_tokens=self.max_output_tokens,
-            )
+            response = self.client.chat.completions.create(**request)
         except Exception as exc:
             self.events.emit(
                 "defender",

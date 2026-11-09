@@ -29,8 +29,12 @@ class DefenderConfig:
     max_cost_usd: float = 1.50
     board_messages: int = 24
     poll_seconds: float = 2.0
-    max_output_tokens: int = 700
+    max_output_tokens: int = 2500
     temperature: float = 0.2
+    # Optional OpenRouter/OpenAI reasoning effort. Cheap reasoning models spend
+    # most of a small completion budget on hidden reasoning; "minimal" keeps a
+    # decision within budget and still produces tool calls.
+    reasoning_effort: Optional[str] = "minimal"
 
 
 @dataclass

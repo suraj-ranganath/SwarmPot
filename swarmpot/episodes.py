@@ -255,6 +255,7 @@ def _start_defenders(
                 poll_seconds=cfg.defender.poll_seconds,
                 max_output_tokens=cfg.defender.max_output_tokens,
                 temperature=cfg.defender.temperature,
+                reasoning_effort=cfg.defender.reasoning_effort,
             )
         )
     team = DefenderTeam(agents, index, budget, cfg.defender.poll_seconds)
