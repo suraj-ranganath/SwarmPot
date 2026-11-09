@@ -86,7 +86,9 @@ Defenders receive assigned Cowrie session events and can inspect permitted ficti
 
 Two defenders receive separate session streams under a fixed assignment policy while sharing the permitted decoy filesystem. The private SQLite board adds ordered, timestamped messages with an episode/team namespace and a shared message cap. ARTEMIS's internal coordination and the defender board stay separate.
 
-**Board-off does not eliminate all possible communication.** Shared files and the consequences of edits can convey information implicitly. E versus D measures the incremental value of an explicit message channel on top of a shared environment. Defenders act asynchronously; every SSH command need not wait for an LLM response. Latency and missed opportunities are measured.
+**Planned board GUI and delivery:** the [builder handoff, item 8](SwarmPot_Builder_Handoff.md#8-defender-board-visibility-and-wake-ups) requires a lightweight local browser GUI with a live message feed, defender status cards, wake-up and delivery/action details, and budgets. In E, a defender can post a message with `notify=true` to wake its teammate or queue a decision if that teammate is busy, within the existing inference allowance. The GUI is read-only for the human observer; wake-ups are agent actions. These additions still require implementation and verification.
+
+**Board-off does not eliminate all possible communication.** Shared files and the consequences of edits can convey information implicitly. E versus D measures the incremental value of an explicit message channel with its declared notification/delivery policy on top of a shared environment; it does not separate message content from notification timing. Defenders act asynchronously; every SSH command need not wait for an LLM response. Latency and missed opportunities are measured.
 
 ### Deliberate reuse
 
@@ -125,7 +127,7 @@ For the primary **E − D** contrast, a negative difference in attack success fa
 | Attacker duration | 30-minute wall-clock ceiling | Same stopping rule in all arms |
 | Defender inference | 40 decisions combined | Equal total allowance in C, D, E; no doubling for two agents |
 | Defender tokens/cost | Fixed combined ceiling | Charge message-related context and decisions to the same allowance |
-| Board traffic | Fixed team message cap in E | Audit reads/posts; no board tools available in D |
+| Board traffic | Fixed team message cap in E | Audit posts, reads, delivery and wake-ups; no board tools or notifications in D |
 
 These are pilot defaults. Budgets must be enforced by the runtime, not only by prompts. Record raw tool invocations and finer-grained command/request counts because a shell call can batch many actions. A monitor that observes calls only after execution does not establish a strict pre-execution cap; overshoot must be measured and resolved before comparisons. Report both allowed resources and actual use.
 
@@ -178,7 +180,7 @@ Record every scheduled run, including infrastructure failures, API errors, missi
 | **G2 — Attacker integration** | One ARTEMIS episode with prompt delivery, active workers, observable/enforced team budget, logs, official grading, and teardown |
 | **G3 — Placebo sidecar** | Baseline behavior and grading unchanged with lure off; fixed clue and request trace verified with lure on |
 | **G4 — Shared decoy** | A writes, B reads identical content, reconnection preserves it, reset clears it; attribution and containment tests pass |
-| **G5 — Defender ablation** | Restricted tools, partitioned observations, matched accounting, actual board use in E, and board unavailability in D |
+| **G5 — Defender ablation** | Restricted tools, partitioned observations, matched accounting, a controlled post/delivery/wake/action trace, observer noninterference, and board unavailability in D |
 | **G6 — Preliminary evaluation** | Paired A–E runs, official verdicts, denominator audits, uncertainty, and failure analysis |
 
 Development evidence is tracked in [`docs/gates.md`](docs/gates.md). A prepared stack or generated report does not by itself establish the full acceptance conditions. If original grading or shared budget enforcement cannot be verified, resolve integration before interpreting comparisons.
