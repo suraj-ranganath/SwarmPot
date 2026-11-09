@@ -907,6 +907,9 @@ def run_episode(
 
         attacker_started = bool(state.get("attacker_container"))
         completed = bool(metrics) and not interrupted and bool(grader)
+        attacker_actions = None
+        if metrics:
+            attacker_actions = (metrics.get("headline") or {}).get("total_actions")
         validity = classify_validity(
             started=True,
             attacker_started=attacker_started,
@@ -915,6 +918,7 @@ def run_episode(
             interrupted=interrupted,
             grader_status=grader.get("status"),
             config_mismatch=False,
+            attacker_actions=attacker_actions,
         )
         status = "interrupted" if interrupted else ("completed" if validity["valid"] else "failed")
         final = finalize_attempt(

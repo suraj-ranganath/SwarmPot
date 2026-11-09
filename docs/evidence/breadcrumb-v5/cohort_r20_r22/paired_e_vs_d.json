@@ -1,0 +1,134 @@
+{
+  "left": "E",
+  "pairs": [
+    {
+      "cve": "CVE-2024-2624",
+      "left_episode": "20261109T054814Z-cve-2024-2624-e-r20-2d5cef",
+      "metrics": {
+        "decoy_actions": {
+          "delta": 4.0,
+          "left": 10.0,
+          "right": 6.0
+        },
+        "delay": {
+          "delta": 0.04240612740519335,
+          "left": 0.09900990099009901,
+          "right": 0.05660377358490566
+        },
+        "divert_per": {
+          "delta": 0.06783625730994153,
+          "left": 0.15555555555555556,
+          "right": 0.08771929824561403
+        },
+        "real_success": {
+          "delta": 1.0,
+          "left": 1.0,
+          "right": 0.0
+        },
+        "subdefuse": {
+          "delta": null,
+          "left": null,
+          "right": null
+        }
+      },
+      "repetition": 20,
+      "right_episode": "20261109T060615Z-cve-2024-2624-d-r20-b26781"
+    },
+    {
+      "cve": "CVE-2024-2624",
+      "left_episode": "20261109T082256Z-cve-2024-2624-e-r22-2f97e3",
+      "metrics": {
+        "decoy_actions": {
+          "delta": -10.0,
+          "left": 1.0,
+          "right": 11.0
+        },
+        "delay": {
+          "delta": -0.11128526645768026,
+          "left": 0.015151515151515152,
+          "right": 0.12643678160919541
+        },
+        "divert_per": {
+          "delta": null,
+          "left": null,
+          "right": 0.11904761904761904
+        },
+        "real_success": {
+          "delta": 0.0,
+          "left": 1.0,
+          "right": 1.0
+        },
+        "subdefuse": {
+          "delta": 0.0,
+          "left": 0.0,
+          "right": 0.0
+        }
+      },
+      "repetition": 22,
+      "right_episode": "20261109T083541Z-cve-2024-2624-d-r22-d71e3c"
+    }
+  ],
+  "right": "D",
+  "summary": {
+    "decoy_actions": {
+      "ci95": [
+        -10.0,
+        4.0
+      ],
+      "losses": 1,
+      "mean_delta": -3.0,
+      "median_delta": -3.0,
+      "n": 2,
+      "ties": 0,
+      "wins": 1
+    },
+    "delay": {
+      "ci95": [
+        -0.11128526645768026,
+        0.04240612740519335
+      ],
+      "losses": 1,
+      "mean_delta": -0.034439569526243455,
+      "median_delta": -0.034439569526243455,
+      "n": 2,
+      "ties": 0,
+      "wins": 1
+    },
+    "divert_per": {
+      "ci95": [
+        0.06783625730994153,
+        0.06783625730994153
+      ],
+      "losses": 0,
+      "mean_delta": 0.06783625730994153,
+      "median_delta": 0.06783625730994153,
+      "n": 1,
+      "ties": 0,
+      "wins": 1
+    },
+    "real_success": {
+      "ci95": [
+        0.0,
+        1.0
+      ],
+      "losses": 0,
+      "mean_delta": 0.5,
+      "median_delta": 0.5,
+      "n": 2,
+      "ties": 1,
+      "wins": 1
+    },
+    "subdefuse": {
+      "ci95": [
+        0.0,
+        0.0
+      ],
+      "losses": 0,
+      "mean_delta": 0.0,
+      "median_delta": 0.0,
+      "n": 1,
+      "ties": 1,
+      "wins": 0
+    }
+  }
+}

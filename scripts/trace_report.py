@@ -60,12 +60,15 @@ def build(episode: Path) -> Dict[str, Any]:
         decision = next((d for d in decisions if d.get("event_id") == edit.get("parent_event_id")), None)
         observation = None
         if decision:
-            for call in tool_calls:
-                if call.get("parent_event_id") == decision.get("event_id"):
-                    ids = (call.get("payload") or {}).get("observed_trace_event_ids") or []
-                    if ids:
-                        observation = call
-                        break
+            candidates = [
+                call for call in tool_calls
+                if call.get("tool") == "read_session"
+                and call.get("agent_id") == edit.get("agent_id")
+                and str(call.get("ts", "")) <= str(edit.get("ts", ""))
+                and ((call.get("payload") or {}).get("observed_trace_event_ids"))
+            ]
+            if candidates:
+                observation = candidates[-1]
         observed_ssh = []
         if observation:
             for event_id in (observation.get("payload") or {}).get("observed_trace_event_ids") or []:
@@ -73,12 +76,17 @@ def build(episode: Path) -> Dict[str, Any]:
                     observed_ssh.append(ssh[event_id].get("payload") or {})
         path = str(payload.get("path") or "")
         after = edit.get("ts", "")
-        needle = path.rsplit("/", 1)[-1] if path else ""
-        exposure = [
-            action
-            for action in actions
-            if after and str(action.get("ts", "")) > after and needle and needle in str((action.get("payload") or {}).get("command", ""))
-        ]
+        rel = path[len("/home/admin/"):] if path.startswith("/home/admin/") else path
+        needles = [path] if path else []
+        # Generic filenames ("config", "README.txt") appear in unrelated real
+        # commands; require the full decoy path for those.
+        if rel and len(rel) >= 12 and rel not in {"README.txt"}:
+            needles.append(rel)
+        exposure = []
+        for action in actions:
+            command = str((action.get("payload") or {}).get("command", ""))
+            if after and str(action.get("ts", "")) > after and any(n and n in command for n in needles):
+                exposure.append(action)
         edit_chains.append(
             {
                 "edit_id": payload.get("edit_id"),
@@ -87,6 +95,7 @@ def build(episode: Path) -> Dict[str, Any]:
                 "after_sha256": payload.get("after_sha256"),
                 "committed_at": edit.get("ts"),
                 "decision_event_id": decision.get("event_id") if decision else None,
+                "observation_event_id": observation.get("event_id") if observation else None,
                 "request_id": (decision.get("payload") or {}).get("request_id") if decision else None,
                 "observed_ssh": observed_ssh[:5],
                 "session_owners": owners,
@@ -115,18 +124,27 @@ def build(episode: Path) -> Dict[str, Any]:
         if context_decisions:
             decision_ids = {d.get("event_id") for d in context_decisions}
             followups = [
-                call for call in tool_calls
-                if call.get("parent_event_id") in decision_ids and call.get("status") == "committed"
+                {
+                    "event_id": call.get("event_id"),
+                    "tool": call.get("tool"),
+                    "status": call.get("status"),
+                    "edit_id": (call.get("payload") or {}).get("edit_id"),
+                    "path": (call.get("payload") or {}).get("path"),
+                }
+                for call in tool_calls
+                if call.get("parent_event_id") in decision_ids
             ]
         board_chains.append(
             {
                 "message_id": seq,
                 "sender": (post.get("payload") or {}).get("sender") or post.get("agent_id"),
+                "body": (post.get("payload") or {}).get("body"),
                 "posted_at": post.get("ts"),
                 "delivered_to": sorted({row.get("agent_id") for row in delivered}),
                 "read_by": sorted({row.get("agent_id") for row in read}),
                 "context_in_decisions": [d.get("event_id") for d in context_decisions],
-                "committed_followups": [c.get("event_id") for c in followups],
+                "followups": followups,
+                "committed_followups": [c["event_id"] for c in followups if c.get("status") == "committed"],
             }
         )
 
@@ -148,6 +166,14 @@ def build(episode: Path) -> Dict[str, Any]:
         "has_board_chain": bool(board_chains),
         "has_edit_exposure": any(chain["subsequent_attacker_actions"] for chain in edit_chains),
         "version_known": False,
+        "raw_logs": {
+            "events": str(episode / "events.jsonl"),
+            "attacker_events": str(episode / "attacker" / "attacker_events.jsonl"),
+            "cowrie": str(episode / "cowrie" / "cowrie.json"),
+            "backend_command_audit": str(episode / "decoy_log" / "commands.tsv"),
+            "sidecar": str(episode / "sidecar" / "sidecar.jsonl"),
+            "board": str(episode / "board.sqlite"),
+        },
     }
     return {
         "episode": str(episode),
@@ -193,7 +219,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
             "",
             f"- committed: {chain['committed_at']}",
             f"- decision: `{chain['decision_event_id']}` request `{chain['request_id']}`",
-            f"- SSH observations: {len(chain['observed_ssh'])}",
+            f"- observation event: `{chain.get('observation_event_id')}` ({len(chain['observed_ssh'])} SSH records)",
             f"- subsequent attacker references: {len(chain['subsequent_attacker_actions'])}",
             f"- exposure: {chain['exposure']} (version known: {chain['version_known']})",
             "",
@@ -212,7 +238,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"- delivered to: {chain['delivered_to']}",
             f"- read by: {chain['read_by']}",
             f"- in decision context: {chain['context_in_decisions']}",
-            f"- committed follow-ups: {chain['committed_followups']}",
+            f"- board body: {chain.get('body')}",
+            f"- subsequent tool calls: {chain.get('followups')}",
             "",
         ]
     return "\n".join(lines)

@@ -187,6 +187,37 @@ def _reconcile_postgrading(collected: List[Any]) -> int:
     return corrected
 
 
+def _reconcile_no_actions(collected: List[Any]) -> int:
+    """A started attacker that executed zero counted actions is a launch/model
+    failure, not a defense success. Append a labelled exclusion correction."""
+    from .ledger import summarize_ledger, update_attempt
+
+    ledger_by_id = {row["attempt_id"]: row for row in summarize_ledger()["attempts"]}
+    corrected = 0
+    for manifest, metrics, episode in collected:
+        attempt_id = str(manifest.get("attempt_id") or manifest.get("episode_id"))
+        row = ledger_by_id.get(attempt_id)
+        if not row or row.get("valid") is not True:
+            continue
+        headline = metrics.get("headline") or {}
+        if (headline.get("total_actions") or 0) > 0:
+            continue
+        update_attempt(
+            Path(episode),
+            attempt_id,
+            "finalize",
+            "invalid",
+            valid=False,
+            exclusion_reason="no_attacker_actions",
+            grader_status=row.get("grader_status"),
+            attacker_started=True,
+            completed=False,
+            note="zero_counted_attacker_actions_excluded_as_launch_failure",
+        )
+        corrected += 1
+    return corrected
+
+
 def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None, *, breadcrumb_profile=None, breadcrumb_hash=None) -> Dict[str, Any]:
     runs_dir = Path(runs_dir)
     policy = policy_versions()
@@ -215,6 +246,7 @@ def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None, *, breadc
         collected.append((manifest, metrics, episode))
 
     corrected = _reconcile_postgrading(collected)
+    excluded_no_actions = _reconcile_no_actions(collected)
     ledger = summarize_ledger()
     ledger_by_id = {row["attempt_id"]: row for row in ledger["attempts"]}
 
@@ -299,6 +331,7 @@ def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None, *, breadc
         "backfilled_attempts": len(backfilled),
         "reconciled_attempts": reconciled,
         "postgrading_corrections": corrected,
+        "no_action_corrections": excluded_no_actions,
     }
     write_json(base / "latest.json", latest)
     return latest
@@ -311,8 +344,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--breadcrumb-profile", default=None)
     parser.add_argument("--breadcrumb-hash", default=None)
     args = parser.parse_args(argv)
+    profile = args.breadcrumb_profile
+    if profile is None:
+        profile = (load_config().raw.get("breadcrumbs") or {}).get("profile")
     result = rebuild(Path(args.runs), Path(args.out) if args.out else None,
-                     breadcrumb_profile=args.breadcrumb_profile, breadcrumb_hash=args.breadcrumb_hash)
+                     breadcrumb_profile=profile, breadcrumb_hash=args.breadcrumb_hash)
     print(json.dumps(result, indent=2))
     return 0
 

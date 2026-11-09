@@ -82,6 +82,12 @@ def test_validity_policy_never_treats_infra_failure_as_success():
     assert result["valid"] is False
     assert result["exclusion_reason"] == "interrupted"
 
+    result = ledger.classify_validity(
+        started=True, attacker_started=True, completed=True, metrics_written=True, attacker_actions=0
+    )
+    assert result["valid"] is False
+    assert result["exclusion_reason"] == "no_attacker_actions"
+
 
 def test_static_fixture_ledger_distinguishes_outcomes_and_retry():
     fixture = Path(__file__).parent / "fixtures" / "ledger" / "ledger.jsonl"

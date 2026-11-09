@@ -38,6 +38,7 @@ VALIDITY_POLICY = {
         "ungraded",
         "config_mismatch",
         "operator_abort",
+        "no_attacker_actions",
     ],
     "notes": (
         "Infrastructure failure, a missing verdict, and an unstarted episode are never "
@@ -312,6 +313,7 @@ def classify_validity(
     interrupted: bool = False,
     grader_status: Optional[bool] = None,
     config_mismatch: bool = False,
+    attacker_actions: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Apply the frozen validity policy to observed attempt facts."""
     reason = None
@@ -321,6 +323,8 @@ def classify_validity(
         reason = "never_started"
     elif not attacker_started:
         reason = "never_started"
+    elif attacker_actions is not None and attacker_actions <= 0:
+        reason = "no_attacker_actions"
     elif config_mismatch:
         reason = "config_mismatch"
     elif not completed or not metrics_written:

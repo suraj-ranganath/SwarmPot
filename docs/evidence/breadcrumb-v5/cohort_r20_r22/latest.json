@@ -1,0 +1,23 @@
+{
+  "backfilled_attempts": 0,
+  "episodes_with_metrics": 6,
+  "generated_at": "2026-11-09T08:50:18.282+00:00",
+  "ledger": {
+    "attacker_started": 16,
+    "attempted": 41,
+    "completed": 16,
+    "failed": 3,
+    "graded": 27,
+    "interrupted": 0,
+    "started": 26,
+    "ungraded": 7,
+    "valid": 13
+  },
+  "no_action_corrections": 0,
+  "out_dir": "runs/summary-breadcrumb-v5",
+  "paired_e_vs_d": 2,
+  "policy_hash": "961c6861f61156145f70050608cc98e9deaf6eeae1e208ae9b209d4502861b0d",
+  "postgrading_corrections": 0,
+  "reconciled_attempts": 7,
+  "valid_runs": 4
+}
