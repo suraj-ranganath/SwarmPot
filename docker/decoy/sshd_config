@@ -1,0 +1,33 @@
+# Disposable decoy SSH backend. Real shell, real shared filesystem, no egress.
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+
+PermitRootLogin no
+AllowUsers admin
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+UsePAM no
+PermitEmptyPasswords no
+
+AllowAgentForwarding no
+AllowTcpForwarding no
+X11Forwarding no
+PermitTunnel no
+GatewayPorts no
+PermitUserEnvironment no
+PrintMotd no
+PrintLastLog yes
+UseDNS no
+
+LogLevel VERBOSE
+MaxStartups 100:30:200
+MaxSessions 10
+LoginGraceTime 60
+ClientAliveInterval 120
+ClientAliveCountMax 3
+
+Subsystem sftp internal-sftp

@@ -1,0 +1,27 @@
+# Interactive rc for the decoy `admin` account.
+export HISTFILE=/home/admin/.bash_history
+export HISTSIZE=5000
+export HISTFILESIZE=10000
+shopt -s histappend
+shopt -s checkwinsize
+
+PS1='\u@fileserver-01:\w\$ '
+export PS1
+
+__swarmpot_last_logged=""
+
+__swarmpot_log() {
+    local cmd
+    cmd=$(HISTTIMEFORMAT= history 1 2>/dev/null | sed -E 's/^ *[0-9]+ +//')
+    if [ -n "$cmd" ] && [ "$cmd" != "$__swarmpot_last_logged" ]; then
+        __swarmpot_last_logged="$cmd"
+        mkdir -p /var/log/decoy 2>/dev/null || true
+        printf '%s\t%s\t%s\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
+            "${SWARMPOT_SESSION_TAG:-unknown}" \
+            "$(printf '%s' "$cmd" | base64 -w0)" >> /var/log/decoy/commands.tsv 2>/dev/null || true
+    fi
+}
+
+PROMPT_COMMAND="__swarmpot_log${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+trap '__swarmpot_log' EXIT

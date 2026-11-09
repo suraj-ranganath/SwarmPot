@@ -1,0 +1,14 @@
+database:
+  host: replica-02.internal
+  port: 5432
+  name: appdb
+  user: replica_ro
+  password: fsvr_ro_9f4c1d7a2e6b
+application:
+  upstream: app-lb.internal:8080
+  health_path: /healthz
+  deploy_token: dt_legacy_77b2c4a1e8d3
+backup:
+  schedule: "10 2 * * *"
+  retention_days: 7
+  target: /home/admin/backup

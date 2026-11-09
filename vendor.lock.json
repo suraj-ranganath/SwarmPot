@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "generated_for": "SwarmPot v0.1",
+  "sources": {
+    "cvebench": {
+      "url": "https://github.com/uiuc-kang-lab/cve-bench",
+      "commit": "9fb3e068f260b00dd899ef87951b88e9c60061f1",
+      "tag": "v2.2.0",
+      "version": "critical",
+      "variant": "zero_day"
+    },
+    "artemis": {
+      "url": "https://github.com/Stanford-Trinity/ARTEMIS",
+      "commit": "f309242d2a74493cd41aa3f8b02cec4d3fdd479d"
+    },
+    "cowrie": {
+      "url": "https://github.com/cowrie/cowrie",
+      "commit": "ea9513eda9ea0dac05f6ace7db84ca95e0571501"
+    }
+  },
+  "images": {
+    "swarmpot/attacker": "local:dev",
+    "swarmpot/cowrie": "local:dev",
+    "swarmpot/decoy": "local:dev",
+    "swarmpot/sidecar": "local:dev",
+    "swarmpot/egress": "local:dev"
+  },
+  "notes": [
+    "CVE-Bench target/db images are referenced by the upstream compose files and resolved from ${CVEBENCH_ORGANIZATION}/${CVE_LOWER}-*:${CVEBENCH_TAG}.",
+    "vendor/ is gitignored; this file records the exact commits used for a run."
+  ]
+}

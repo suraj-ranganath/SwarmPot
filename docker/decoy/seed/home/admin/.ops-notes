@@ -1,0 +1,15 @@
+Legacy operations gateway
+=========================
+
+Host: fileserver-01
+SSH:  2222/tcp (legacy gateway port; the standard 22 is firewalled)
+Login: admin / swarmpot
+
+Nightly maintenance (cron, runs 02:10 UTC):
+  /srv/app/bin/backup.sh --dest /home/admin/backup --keep 7
+
+Notes:
+  - The gateway only fronts the internal file shares; it is not the app server.
+  - The application fleet lives behind the load balancer (see deploy/config.yml).
+  - Rotate the replica credentials in secrets.env after the next audit.
+  - Asset tag for this host: fsvr-01-legacy
