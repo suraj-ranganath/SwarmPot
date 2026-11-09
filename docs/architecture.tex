@@ -1,126 +1,122 @@
-% SwarmPot: planned research architecture (not a deployment topology).
-% Build from the repository root:
+% SwarmPot architecture for one episode (Figure 1 of the accompanying paper).
+% Self-contained TikZ source. Build from the repository root:
 % pdflatex -interaction=nonstopmode -halt-on-error -output-directory docs docs/architecture.tex
 % pdftocairo -svg docs/architecture.pdf docs/architecture.svg
-\documentclass[tikz,border=5pt]{standalone}
+\documentclass[10pt,border=6pt]{standalone}
+\renewcommand{\rmdefault}{ptm}
+\renewcommand{\sfdefault}{phv}
 \usepackage[T1]{fontenc}
-\usepackage{lmodern}
-\hyphenpenalty=10000
-\exhyphenpenalty=10000
-\usetikzlibrary{arrows.meta,calc,positioning,backgrounds}
-\definecolor{ink}{HTML}{17324D}
-\definecolor{muted}{HTML}{566B7F}
-\definecolor{rule}{HTML}{BBC9D5}
-\definecolor{blue}{HTML}{28658D}
-\definecolor{bluebg}{HTML}{EFF6FB}
-\definecolor{teal}{HTML}{087F78}
-\definecolor{tealbg}{HTML}{EAF7F3}
-\definecolor{purple}{HTML}{685193}
-\definecolor{purplebg}{HTML}{F3EFF9}
-\definecolor{gold}{HTML}{9A641D}
-\definecolor{goldbg}{HTML}{FFF6E6}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,positioning,fit,decorations.pathreplacing,shapes.symbols}
+
+% Okabe--Ito hues; every role is also distinguished by line style or label.
+\definecolor{ink}{HTML}{1B2A3A}
+\definecolor{muted}{HTML}{5A6B7B}
+\definecolor{atk}{HTML}{0B5C8E}
+\definecolor{atkbg}{HTML}{EAF2F8}
+\definecolor{dec}{HTML}{00785A}
+\definecolor{decbg}{HTML}{E7F4EE}
+\definecolor{dfn}{HTML}{6B3F8F}
+\definecolor{dfnbg}{HTML}{F3EDF8}
+\definecolor{orc}{HTML}{A86A00}
+\definecolor{orcbg}{HTML}{FFF3DC}
+\definecolor{evl}{HTML}{4A4A4A}
+\definecolor{evlbg}{HTML}{F3F3F3}
+\definecolor{alert}{HTML}{B23A2B}
 \tikzset{
- box/.style 2 args={draw=#1,fill=#2,line width=.9pt,rounded corners=2mm,
-   text=ink,font=\sffamily\small,align=left,text width=3.3cm,
-   inner xsep=3mm,inner ysep=3mm,minimum height=1.6cm},
- attack/.style={box={blue}{bluebg}},
- decoy/.style={box={teal}{tealbg}},
- defense/.style={box={purple}{purplebg}},
- oracle/.style={box={gold}{goldbg}},
- traffic/.style={draw=blue,line width=1.1pt,-{Stealth[length=2.3mm]}},
- ssh/.style={draw=teal,line width=1.1pt,-{Stealth[length=2.3mm]}},
- observe/.style={draw=purple,line width=.95pt,-{Stealth[length=2mm]}},
- audit/.style={draw=muted,line width=.85pt,densely dotted,-{Stealth[length=2mm]}},
- label/.style={font=\sffamily\scriptsize,text=muted,fill=white,inner sep=2pt,align=center},
- heading/.style={font=\sffamily\bfseries\footnotesize,text=muted},
- smallbox/.style={defense,text width=2.6cm,minimum height=1.05cm,align=center,inner sep=2mm}
+  >={Stealth[length=1.9mm]},
+  every node/.style={font=\sffamily\footnotesize, text=ink},
+  rbox/.style 2 args={draw=#1, fill=#2, line width=.7pt, rounded corners=1.5mm,
+                      align=center, inner sep=2.2pt},
+  atkbox/.style={rbox={atk}{atkbg}},
+  decbox/.style={rbox={dec}{decbg}},
+  dfnbox/.style={rbox={dfn}{dfnbg}},
+  orcbox/.style={rbox={orc}{orcbg}},
+  evlbox/.style={rbox={evl}{evlbg}},
+  group/.style={draw=#1, line width=.6pt, rounded corners=2.5mm, dash pattern=on 3pt off 1.5pt},
+  grouplabel/.style={font=\sffamily\scriptsize\bfseries, text=#1},
+  httpflow/.style={draw=atk, line width=1pt, ->},
+  sshflow/.style={draw=dec, line width=1pt, ->},
+  ctrlflow/.style={draw=dfn, line width=.9pt, ->},
+  msgflow/.style={draw=dfn, line width=.9pt, <->, dash pattern=on 3pt off 1.5pt},
+  oracleflow/.style={draw=orc, line width=1pt, ->},
+  telemetry/.style={draw=evl!80, line width=.6pt, densely dotted, ->},
+  tag/.style={font=\sffamily\scriptsize, text=muted, fill=white, inner sep=1pt, align=center},
+  small/.style={font=\sffamily\scriptsize},
 }
+\pagecolor{white} % keeps the SVG readable in dark-mode viewers
+
 \begin{document}
 \begin{tikzpicture}[x=1cm,y=1cm]
-% Explicit white canvas keeps all vector labels readable in dark-mode viewers.
-\path[fill=white] (-.35,-1.05) rectangle (25.25,16.1);
+  % ---------------------------------------------------------------- controller
+  \node[evlbox, minimum width=16.2cm, minimum height=.62cm] (ctrl) at (8.1,8.35)
+    {\textbf{Episode controller}\quad task + paired seed \;$\cdot$\; arm A--E \;$\cdot$\; team budgets \;$\cdot$\; fresh state \;$\cdot$\; official grading \;$\cdot$\; teardown \;$\cdot$\; attempt ledger};
 
-% Control is shown as a common banner, rather than an ambiguous network edge.
-\node[defense,text width=23.4cm,minimum height=1.2cm] at (12.2,15.05)
- {\textbf{SwarmPot episode controller}\hfill\textcolor{purple}{\footnotesize PLANNED EXPERIMENT}\\[2pt]
- \footnotesize Task + paired seed \quad / \quad arm A--E \quad / \quad team resource ceilings \quad / \quad reset, grade, audit, teardown};
+  % ------------------------------------------------------------- attacker swarm
+  \draw[group=atk] (0,1.75) rectangle (3.55,7.75);
+  \node[grouplabel=atk, anchor=north] at (1.775,7.68) {ATTACKER SWARM};
+  \node[atkbox, minimum width=3.1cm, minimum height=.75cm] (sup) at (1.775,6.75)
+    {\textbf{ARTEMIS supervisor}\\[-1pt]\scriptsize delegates, merges findings};
+  \node[atkbox, minimum width=1.4cm, minimum height=.75cm] (w1) at (0.95,5.25)
+    {\textbf{Worker 1}\\[-1pt]\scriptsize Codex};
+  \node[atkbox, minimum width=1.4cm, minimum height=.75cm] (w2) at (2.6,5.25)
+    {\textbf{Worker 2}\\[-1pt]\scriptsize Codex};
+  \draw[atk, line width=.8pt, <->] ([xshift=-.75cm]sup.south) -- (w1.north);
+  \draw[atk, line width=.8pt, <->] ([xshift=.75cm]sup.south) -- (w2.north);
+  \node[small, text=atk, fill=atkbg!40, inner sep=1pt] at (1.775,5.98) {\scriptsize team channel};
+  \node[atkbox, minimum width=3.1cm, minimum height=.95cm] (bud) at (1.775,3.75)
+    {\textbf{Shared action budget}\\[-1pt]\scriptsize 200 counted tool actions\\[-2pt]\scriptsize team wall-clock limit};
+  \draw[atk, line width=.8pt] (w1.south) -- (w1.south |- bud.north);
+  \draw[atk, line width=.8pt] (w2.south) -- (w2.south |- bud.north);
+  \node[small, text=muted, align=center] at (1.775,2.35)
+    {\scriptsize workers choose freely:\\[-2pt]\scriptsize real app or decoy};
 
-% Attacker team: explicit supervisor/worker structure with one accounting point.
-\draw[draw=blue!50,fill=blue!2,rounded corners=2.5mm,line width=.7pt] (0,5.2) rectangle (4.8,13.7);
-\node[heading] at (2.4,13.28) {ARTEMIS ATTACKER TEAM};
-\node[attack,text width=3.45cm,minimum height=.9cm,align=center] (supervisor) at (2.4,12.22)
- {\textbf{Supervisor}\\\footnotesize Private team channels};
-\node[attack,text width=1.45cm,minimum height=1cm,align=center,inner sep=2mm] (w1) at (1.23,10.35)
- {\textbf{Worker 1}\\\footnotesize Concurrent};
-\node[attack,text width=1.45cm,minimum height=1cm,align=center,inner sep=2mm] (w2) at (3.57,10.35)
- {\textbf{Worker 2}\\\footnotesize Concurrent};
-\node[attack,text width=3.45cm,minimum height=1.35cm,align=center] (budget) at (2.4,8.12)
- {\textbf{Shared action budget}\\\footnotesize 200 tool calls / 30 minutes\\\scriptsize Pilot ceilings across the team};
-\draw[traffic] (supervisor.south) -- ++(0,-.23) -| (w1.north);
-\draw[traffic] (supervisor.south) -- ++(0,-.23) -| (w2.north);
-\draw[traffic] (w1.south) -- ++(0,-.32) -| ($(budget.north)+(-.7,0)$);
-\draw[traffic] (w2.south) -- ++(0,-.32) -| ($(budget.north)+(.7,0)$);
-\node[font=\sffamily\footnotesize,text=muted,align=center,text width=3.8cm] at (2.4,6.28)
- {One worker may follow the decoy while another continues against the real application.};
+  % ------------------------------------------------------------ real side (HTTP)
+  \node[atkbox, minimum width=2.55cm, minimum height=1.05cm] (side) at (5.55,6.2)
+    {\textbf{HTTP sidecar}\\[-1pt]\scriptsize mitmproxy; forwards\\[-2pt]\scriptsize requests unchanged};
+  \node[atkbox, minimum width=2.75cm, minimum height=1.05cm] (real) at (9.05,6.2)
+    {\textbf{Real CVE-Bench app}\\[-1pt]\scriptsize original vulnerability,\\[-2pt]\scriptsize always reachable};
+  \node[orcbox, minimum width=3.0cm, minimum height=1.05cm] (oracle) at (13.95,6.2)
+    {\textbf{Official CVE-Bench grader}\\[-1pt]\scriptsize judges the real app only;\\[-2pt]\scriptsize decoy evidence cannot count};
+  \draw[httpflow] (3.55,4.35) -- (3.95,4.35) |- (side.west);
+  \draw[httpflow] (side.east) -- (real.west);
+  \draw[oracleflow] (oracle.west) -- node[tag, above] {verdict} (real.east);
+  \node[text=atk, font=\sffamily\scriptsize, align=center, anchor=south, inner sep=1pt] at (5.95,6.86) {AgentSnare-style breadcrumbs (B--E)\\[-2pt]clue-free pass-through (A)};
 
-% Two reachable destinations; only the real application is the exploit oracle's subject.
-\node[attack,text width=2.8cm] (sidecar) at (7.2,11.75)
- {\textbf{HTTP sidecar}\\\footnotesize Fixed SSH clue\\\scriptsize A: off\quad B--E: on};
-\node[attack,text width=3.45cm] (real) at (12.15,11.75)
- {\textbf{Real CVE-Bench target}\\\footnotesize Original application\\\scriptsize Remains reachable throughout};
-\node[oracle,text width=6.1cm] (grader) at (20.45,11.75)
- {\textbf{Official CVE-Bench grader}\\\footnotesize Evaluates only the real application\\\scriptsize Independent of attacker claims and decoy evidence};
-\draw[traffic] (budget.east) -- (4.98,8.12) |- node[label,above,pos=.78]{HTTP} (sidecar.west);
-\draw[traffic] (sidecar.east) -- node[label,above]{forward} (real.west);
-\draw[draw=gold,line width=1.05pt,-{Stealth[length=2.2mm]}] (grader.west) -- node[label,above]{official check} (real.east);
+  % ------------------------------------------------------------ decoy side (SSH)
+  \node[decbox, minimum width=2.55cm, minimum height=1.05cm] (cow) at (5.55,3.25)
+    {\textbf{Cowrie SSH proxy}\\[-1pt]\scriptsize session events;\\[-2pt]\scriptsize voluntary entry};
+  \node[decbox, minimum width=2.75cm, minimum height=1.25cm] (fs) at (9.05,3.25)
+    {\textbf{Shared decoy host}\\[-1pt]\scriptsize one OpenSSH container,\\[-2pt]\scriptsize one filesystem for all sessions;\\[-2pt]\scriptsize reset between episodes};
+  \draw[sshflow] (3.55,3.25) -- (cow.west);
+  \draw[sshflow] (cow.east) -- (fs.west);
+  \draw[evl!60, line width=.8pt, dashed, ->] (fs.north) -- (real.south);
+  \node[text=alert, font=\sffamily\bfseries\large, fill=white, inner sep=0pt] at (9.05,4.77) {$\times$};
+  \node[tag, text=alert, anchor=west] at (9.25,4.77) {\scriptsize no route};
 
-\node[decoy,text width=2.8cm] (cowrie) at (7.2,7.15)
- {\textbf{Cowrie SSH proxy}\\\footnotesize Session event logs\\\scriptsize Voluntary attacker entry};
-\node[decoy,text width=3.45cm] (backend) at (12.15,7.15)
- {\textbf{Disposable OpenSSH decoy}\\\footnotesize One shared filesystem\\\scriptsize Same initial artifacts in B--E};
-\draw[ssh] (budget.east) -- (4.98,8.12) |- (cowrie.west);
-\draw[ssh] (cowrie.east) -- node[label,above]{proxy} (backend.west);
-\node[font=\sffamily\scriptsize,text=teal,align=center,text width=4.05cm] at (12.15,5.70)
- {Persistent within episode; reset between episodes.\\No route to the real application.};
+  % ------------------------------------------------------------- defender swarm
+  \draw[group=dfn] (11.85,1.75) rectangle (16.2,5.05);
+  \node[grouplabel=dfn, anchor=north] at (14.025,4.98) {DEFENDER SWARM (C: 1; D, E: 2)};
+  \node[dfnbox, minimum width=1.8cm, minimum height=.8cm] (d1) at (13.0,3.95)
+    {\textbf{Defender 1}\\[-1pt]\scriptsize sessions $\mathcal{S}_1$};
+  \node[dfnbox, minimum width=1.8cm, minimum height=.8cm] (d2) at (15.1,3.95)
+    {\textbf{Defender 2}\\[-1pt]\scriptsize sessions $\mathcal{S}_2$};
+  \node[dfnbox, minimum width=4.0cm, minimum height=.78cm] (board) at (14.05,2.42)
+    {\textbf{Private board} (arm E only)\\[-1pt]\scriptsize post / read / \texttt{notify} wake-up};
+  \draw[msgflow] (d1.south) -- (d1.south |- board.north);
+  \draw[msgflow] (d2.south) -- (d2.south |- board.north);
+  % observations: Cowrie -> defenders
+  \draw[ctrlflow] (cow.south) -- (5.55,2.05) -- node[tag, below, pos=.5] {\scriptsize events of assigned sessions (round-robin)} (11.4,2.05) |- (11.85,2.95);
+  % interventions: defenders -> shared filesystem
+  \draw[ctrlflow] (11.85,3.55) -- (10.43,3.55) node[tag, above, pos=.5] {\scriptsize edits};
 
-% Defender team: partial observations, a common world, and a single treatment switch.
-\draw[draw=purple!55,fill=purple!2,rounded corners=2.5mm,line width=.7pt] (16.6,5.0) rectangle (24.4,9.35);
-\node[heading] at (20.5,8.98) {DEFENDER TEAM\quad C: ONE / D,E: TWO};
-\node[smallbox] (d1) at (18.65,8.05) {\textbf{Defender 1}\\\footnotesize Session subset 1};
-\node[smallbox] (d2) at (22.35,8.05) {\textbf{Defender 2}\\\footnotesize Session subset 2};
-\node[defense,text width=5.7cm,minimum height=.95cm,align=center,inner sep=2mm] (board) at (20.5,6.32)
- {\textbf{Private, budgeted message board}\\\footnotesize D: disabled\qquad E: enabled};
-\draw[observe,<->] (d1.south) -- ($(board.north)+(-1.2,0)$);
-\draw[observe,<->] (d2.south) -- ($(board.north)+(1.2,0)$);
-\node[font=\sffamily\scriptsize,text=purple] at (20.5,5.32)
- {40 decisions combined + fixed token/cost ceiling};
-\draw[observe] (cowrie.north) -- (7.2,9.85) -- (16.08,9.85) -- (16.08,8.75) -- (16.6,8.75);
-\node[label] at (11.8,9.85) {assigned Cowrie observations};
-\draw[observe] (16.6,7.15) -- node[label,above]{allowlisted edits} (backend.east);
-
-% Audit paths are deliberately distinct from participant observations.
-\node[attack,text width=7.2cm,minimum height=1.5cm] (evidence) at (4.2,2.65)
- {\textbf{Append-only episode evidence}\\\footnotesize Actions, sessions, edits, messages, reports\\\scriptsize Versioned manifests, timestamps, tokens, cost};
-\node[attack,text width=6.6cm,minimum height=1.5cm] (metrics) at (12.85,2.65)
- {\textbf{Protection + deception measures}\\\footnotesize Official success; Delay / Divert / Defuse\\\scriptsize Team, agent and session views; explicit denominators};
-\node[oracle,text width=5.25cm,minimum height=1.5cm] (paired) at (21.2,2.65)
- {\textbf{Paired comparison and uncertainty}\\\footnotesize E versus D by task and repetition\\\scriptsize Failures and budget violations retained};
-\draw[audit] (2.4,5.2) -- (2.4,3.42);
-\draw[audit] (cowrie.south) -- (7.2,3.42);
-\draw[audit] (20.5,5.0) -- (20.5,3.42);
-\draw[audit] (grader.east) -- (24.92,11.75) |- (paired.east);
-\draw[traffic] (evidence.east) -- (metrics.west);
-\draw[traffic] (metrics.east) -- (paired.west);
-\node[font=\sffamily\scriptsize,text=muted,align=center] at (12.85,4.42)
- {Dotted paths: private evaluator audit.\\Team data is not exposed to opponents.};
-
-% Highlight the causal comparison and its shared-world qualification.
-\draw[draw=rule,line width=.65pt] (0,1.26) -- (24.4,1.26);
-\node[font=\sffamily\bfseries\footnotesize,text=ink] at (12.2,.66)
- {PRIMARY INTERVENTION:\quad D --- two defenders, board OFF\qquad\(\longleftrightarrow\)\qquad E --- two defenders, board ON};
-\node[font=\sffamily\footnotesize,text=muted,align=center] at (12.2,.03)
- {Matched models, observation policy, action tools, initial decoy and combined inference budget.};
-\node[font=\sffamily\scriptsize,text=muted,align=center] at (12.2,-.55)
- {Both arms share the decoy filesystem: this isolates explicit messaging, not every possible implicit information channel.};
+  % ------------------------------------------------------------------ evaluator
+  \node[evlbox, minimum width=16.2cm, minimum height=.72cm] (ev) at (8.1,.55)
+    {\textbf{Evaluator}\quad event ledger $\rightarrow$ official success \;$\cdot$\; Delay / Divert / Defuse \;$\cdot$\; funnel \;$\cdot$\; consistency \;$\cdot$\; cost $\rightarrow$ paired E$-$D};
+  \draw[telemetry] (1.775,1.75) -- (1.775,.91);
+  \draw[telemetry] (4.6,2.72) -- (4.6,.91);
+  \draw[telemetry] (14.05,1.75) -- (14.05,.91);
+  \draw[telemetry] (oracle.east) -- (16.5,6.2) |- (ev.east);
 \end{tikzpicture}
 \end{document}
