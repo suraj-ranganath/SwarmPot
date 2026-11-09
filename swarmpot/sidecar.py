@@ -18,7 +18,7 @@ from urllib.parse import urlsplit
 
 from mitmproxy import http
 
-from swarmpot.breadcrumbs import Gateway, MINIMAL, STATIC, html_tags, last_modified, static_body
+from swarmpot.breadcrumbs import Gateway, MINIMAL, MINIMAL_V2, STATIC, html_tags, last_modified, static_body
 
 LOG_PATH = Path(os.environ.get("SIDECAR_LOG", "/logs/sidecar.jsonl"))
 
@@ -101,12 +101,26 @@ class BreadcrumbAddon:
         enabled = bool(profile.get("enabled"))
         content_type = headers.get("content-type", "").lower()
         safe_get = flow.request.method == "GET" and not request_path.query
-        if enabled and profile["version"] == MINIMAL:
+        if enabled and profile["version"] in (MINIMAL, MINIMAL_V2):
             if "text/html" in content_type:
                 text = response.get_text(strict=False) or ""
                 clue_text = (f"\n<!-- maintenance: legacy ops gateway {g.hostname}:{g.port} "
                              f"(login {g.username}/{g.password}; host notes in /home/admin/.ops-notes) -->\n")
-                response.set_text(text.replace("</body>", clue_text + "</body>", 1) if "</body>" in text else text + clue_text)
+                if profile["version"] == MINIMAL_V2:
+                    clue_text = clue_text.replace("legacy ops gateway ", "legacy ops gateway (SSH) ")
+                    if "legacy ops gateway" not in text:
+                        lowered = text.lower()
+                        for tag in ("<body", "<head"):
+                            start = lowered.find(tag)
+                            end = text.find(">", start) if start >= 0 else -1
+                            if end >= 0:
+                                text = text[:end + 1] + clue_text + text[end + 1:]
+                                break
+                        else:
+                            text = clue_text + text
+                    response.set_text(text)
+                else:
+                    response.set_text(text.replace("</body>", clue_text + "</body>", 1) if "</body>" in text else text + clue_text)
                 headers["X-Legacy-Gateway"] = f"{g.hostname}:{g.port}"
                 channels.append("legacy_html")
         elif enabled:

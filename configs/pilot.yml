@@ -8,8 +8,8 @@ breadcrumbs:
 
 attacker:
   # Models are pinned in the run manifest; these are the two ARTEMIS roles.
-  supervisor_model: openai/gpt-5-nano
-  subagent_model: openai/gpt-5-nano
+  supervisor_model: deepseek/deepseek-v4.1-flash
+  subagent_model: deepseek/deepseek-v4.1-flash
   # Team-wide counted tool actions (all subagents), hard ceiling at the shared
   # ARTEMIS log/budget boundary. Supervisor management tools are not counted.
   max_tool_actions: 200
@@ -19,7 +19,7 @@ attacker:
   ensure_after_seconds: 90
 
 defender:
-  model: openai/gpt-5-nano
+  model: deepseek/deepseek-v4.1-flash
   # Combined across the whole defender team, independent of team size.
   combined_decisions: 40
   max_cost_usd: 1.50
@@ -29,7 +29,7 @@ defender:
   temperature: 0.2
   # Cheap reasoning models need an explicit low effort or they spend the whole
   # completion budget on hidden reasoning.
-  reasoning_effort: minimal
+  reasoning_effort: low
 
 decoy:
   hostname: fileserver-01

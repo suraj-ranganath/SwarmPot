@@ -38,7 +38,7 @@ def observation_evidence(root, needles):
     return evidence
 
 
-def build_funnel(episode_dir):
+def build_funnel(episode_dir, output=None):
     root = Path(episode_dir)
     manifest = read_json(root / 'manifest.json', {}) or {}
     profile = manifest.get('breadcrumbs') or read_json(root / 'sidecar/breadcrumb_profile.json', {}) or {}
@@ -99,7 +99,7 @@ def build_funnel(episode_dir):
         'protocol_confusion_events': [r for r in index.rows if r.get('eventid') == 'cowrie.client.version'
                                       and not str(r.get('version', '')).startswith('SSH-')],
     }
-    write_json(root / 'discovery_funnel.json', payload)
+    write_json(Path(output) if output else root / 'discovery_funnel.json', payload)
     return payload
 
 

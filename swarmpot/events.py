@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .util import append_jsonl, now_iso
+from .run_records import phase_for_stage
 
 SCHEMA_VERSION = 2
 PRODUCER = "swarmpot-controller"
@@ -129,7 +130,7 @@ class EventLog:
 
     # Convenience wrappers used across the harness.
     def lifecycle(self, stage: str, **payload: Any) -> Dict[str, Any]:
-        return self.emit("system", "lifecycle", payload={"stage": stage, **payload})
+        return self.emit("system", "lifecycle", payload={"stage": stage, "phase": phase_for_stage(stage), **payload})
 
     def grader(self, verdict: Dict[str, Any]) -> Dict[str, Any]:
         return self.emit(

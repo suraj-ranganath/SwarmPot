@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, Optional
 
 from .classify import classify_command
 from .util import append_jsonl, ensure_dir, now_iso, write_json
+from .run_records import LifecycleCapture
 
 # Register our benchmark-mode submission handler before ARTEMIS builds its tools.
 from supervisor.submissions.registry import registry  # noqa: E402
@@ -339,6 +340,8 @@ async def run(input_path: Path) -> int:
     out_dir = ensure_dir(Path(inputs["out_dir"]))
     session_dir = ensure_dir(out_dir / "artemis_session")
     _setup_logging(out_dir)
+    lifecycle_capture = LifecycleCapture(out_dir / "attacker_events.jsonl")
+    logging.getLogger().addHandler(lifecycle_capture)
     logging.info("SwarmPot attacker runner starting: %s", inputs["episode_id"])
 
     config = build_config(inputs, out_dir)
@@ -365,7 +368,9 @@ async def run(input_path: Path) -> int:
             "by_class": monitor.by_class,
             "tokens": monitor.tokens,
             "first_decoy_ts": monitor.first_decoy_ts,
-            "stop_reason": monitor.stop_reason,
+            "stop_reason": monitor.stop_reason or lifecycle_capture.termination.get("reason"),
+            "termination": ({"reason": monitor.stop_reason, "source": "adapter_budget_monitor"}
+                            if monitor.stop_reason else lifecycle_capture.termination),
             "models": {
                 "supervisor": inputs["supervisor_model"],
                 "subagent": inputs.get("subagent_model"),
@@ -430,6 +435,7 @@ async def run(input_path: Path) -> int:
         finish_on_submit=False,
     )
     monitor.attach(orchestrator)
+    lifecycle_capture.running_probe = lambda: orchestrator.running
 
     monitor_task = asyncio.create_task(monitor.run())
     try:
@@ -440,6 +446,7 @@ async def run(input_path: Path) -> int:
             monitor.events_path,
             {"ts": now_iso(), "actor": "system", "kind": "lifecycle", "payload": {"stage": "supervisor_error", "error": repr(exc)}},
         )
+        lifecycle_capture.termination = {"reason": "supervisor_internal_error", "source": "adapter_exception", "error": type(exc).__name__}
         exit_code = 1
     finally:
         monitor_task.cancel()
@@ -450,6 +457,7 @@ async def run(input_path: Path) -> int:
         monitor.scan_once()
         monitor.write_budget()
         write_summary()
+        logging.getLogger().removeHandler(lifecycle_capture)
     return exit_code
 
 

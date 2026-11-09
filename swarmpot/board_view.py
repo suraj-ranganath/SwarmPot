@@ -15,37 +15,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .util import RUNS_DIR
+from .view_data import redact, read_object
+from .run_inspection import build_inspection, describe_event, record_phase, trace_page
 
 ASSETS = Path(__file__).with_name('board_ui')
 EVENT_WINDOW = 2 * 1024 * 1024
 
-
-def redact(value):
-    if isinstance(value, dict):
-        return {k: '[redacted]' if re.search(r'password|secret|api_key|authorization|credential|access_token', k, re.I)
-                else redact(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [redact(v) for v in value]
-    if not isinstance(value, str):
-        return value
-    for key, secret in os.environ.items():
-        if re.search(r'KEY|TOKEN|PASSWORD|SECRET', key) and len(secret) >= 8:
-            value = value.replace(secret, '[redacted]')
-    value = re.sub(r'(?i)(bearer\s+)[\w.\-/+=]+', r'\1[redacted]', value)
-    value = re.sub(r'(?i)((?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|token|credential)[\w-]*[\s\"\x27]*[:=][\s\"\x27]*)[^\s,;\"\x27}]+',
-                   r'\1[redacted]', value)
-    value = re.sub(r'(?i)(https?://)[^\s/@:]+:[^\s/@]+@', r'\1[redacted]@', value)
-    return re.sub(r'\bsk-[A-Za-z0-9_-]{12,}', '[redacted]', value)
-
-
-def read_object(path):
-    try:
-        if path.stat().st_size > 1024 * 1024:
-            return {}
-        value = json.loads(path.read_text())
-        return value if isinstance(value, dict) else {}
-    except (OSError, ValueError):
-        return {}
 
 
 def audit_tail(path):
@@ -66,7 +41,7 @@ def audit_tail(path):
             continue
         try:
             record = json.loads(line)
-            if record.get('actor') == 'defender' or record.get('kind') == 'lifecycle':
+            if record.get('actor') == 'defender' or record.get('kind') in ('lifecycle', 'grader', 'attempt_error', 'interrupted', 'teardown_error'):
                 rows.append(record)
         except (ValueError, UnicodeDecodeError):
             continue
@@ -75,18 +50,22 @@ def audit_tail(path):
 
 def public_event(row):
     # Do not return tool bodies, private SSH streams, local paths or raw logs.
-    payload = row.get('payload', {})
+    payload = row.get('payload') or {}
+    if not isinstance(payload, dict):
+        payload = {}
     keys = ('request_id', 'retry_of', 'provider_request_id', 'message_id', 'message_seqs', 'board_message_seqs',
             'board_context_message_seqs', 'recipient', 'origin', 'status', 'state',
             'reason', 'trigger', 'content', 'tool_names', 'path', 'edit_id',
             'provenance_id', 'commit_status', 'source_decision_event_id',
-            'pending_message_seqs', 'policy', 'poll_seconds', 'stage', 'ok')
+            'pending_message_seqs', 'policy', 'poll_seconds', 'stage', 'ok',
+            'exit_code', 'timed_out', 'waited_seconds', 'stop_reason', 'valid', 'exclusion_reason',
+            'error', 'message', 'description', 'elapsed_seconds', 'phase', 'termination', 'finalization')
     shown = {k: payload[k] for k in keys if k in payload}
     if row.get('kind') == 'board_post':
         shown['message_id'] = payload.get('message_id', payload.get('seq'))
     if row.get('tool') == 'write_decoy_file':
         shown['path'] = payload.get('path', payload.get('args', {}).get('path'))
-    return redact({k: row.get(k) for k in ('seq', 'ts', 'event_id', 'kind', 'agent_id',
+    return redact({k: row.get(k) for k in ('seq', 'ts', 'event_id', 'kind', 'actor', 'target_class', 'agent_id',
                                          'tool', 'status', 'reason', 'parent_event_id', 'refs')}
                   | {'payload': shown})
 
@@ -229,6 +208,13 @@ def snapshot(root, episode, after=0, *, include_fixtures=False):
             pass
     if not any(r.get('kind') == 'defender_status' for r in rows):
         missing.append('Defender status not recorded; current activity is unknown')
+    inspection = build_inspection(path, manifest, rows)
+    projected = []
+    for row in rows:
+        shown = public_event(row)
+        shown['phase'] = record_phase(row, inspection['phases'])
+        shown['explanation'] = describe_event(row, inspection)
+        projected.append(shown)
     stage = next((r.get('payload', {}).get('stage') for r in reversed(rows) if r.get('kind') == 'lifecycle'), None)
     return redact({'episode': {k: manifest.get(k) for k in ('episode_id', 'arm', 'cve', 'created_at', 'repetition')},
                    'attempt_status': attempt.get('status'),
@@ -238,7 +224,7 @@ def snapshot(root, episode, after=0, *, include_fixtures=False):
                    'has_more': len(messages) == 100, 'notifications': notifications,
                    'notification_evidence_complete': notifications_known,
                    'receipts': receipts, 'cards': cards, 'budget': budget,
-                   'events': [public_event(r) for r in rows], 'missing': missing,
+                   'events': projected, 'inspection': inspection, 'missing': missing,
                    'audit_windowed': windowed})
 
 
@@ -271,6 +257,19 @@ def make_server(root: Path, port: int = 8765, *, include_fixtures: bool = False)
                     return self.reply(200, episode_list(root, max(0, int(query.get('offset', ['0'])[0])), include_fixtures=include_fixtures))
                 if url.path == '/api/snapshot':
                     return self.reply(200, snapshot(root, query.get('episode', [''])[0], max(0, int(query.get('after', ['0'])[0])), include_fixtures=include_fixtures))
+                if url.path == '/api/trace':
+                    supplied = root / query.get('episode', [''])[0]
+                    if supplied.is_symlink():
+                        raise ValueError('symlink episode unavailable')
+                    selected = supplied.resolve()
+                    if selected.parent != root or not selected.is_dir() or selected.is_symlink():
+                        raise ValueError('unknown episode')
+                    manifest = read_object(selected / 'manifest.json')
+                    if not manifest or not (include_fixtures or experiment_evidence(selected, manifest)):
+                        raise ValueError('started experiment evidence unavailable')
+                    return self.reply(200, trace_page(selected, query.get('source', ['controller'])[0],
+                                                     query.get('phase', ['all'])[0],
+                                                     int(query.get('cursor', ['0'])[0])))
                 asset = {'/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css'}.get(url.path)
                 if asset:
                     kind = {'index.html': 'text/html; charset=utf-8', 'app.js': 'text/javascript; charset=utf-8', 'style.css': 'text/css; charset=utf-8'}[asset]

@@ -6,7 +6,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
-from swarmpot.breadcrumbs import (Gateway, PROFILE, MINIMAL, STATIC, compile_profile,
+from swarmpot.breadcrumbs import (Gateway, PROFILE, MINIMAL, MINIMAL_V2, STATIC, compile_profile,
                                   configuration, html_tags, last_modified, static_body)
 from types import SimpleNamespace
 from swarmpot.report import paired_comparison
@@ -75,6 +75,9 @@ class ProfileTests(unittest.TestCase):
         p = compile_profile(config, '<a href="https://outside.example/path">x</a><a href="/login?secret=123">x</a>')
         self.assertEqual(p['public_routes'], ['/', '/login'])
         self.assertNotIn('secret', str(p))
+        occupied = compile_profile(config, '<a href="/healthcheck.json">Native route</a>', {'/healthcheck.json': 404})
+        self.assertNotIn('/healthcheck.json', occupied['routes'])
+        self.assertEqual(occupied['collisions']['/healthcheck.json'], 'public_route')
 
 
 # The production mitmproxy library lives in the sidecar image. These tests run
@@ -232,6 +235,13 @@ class SidecarTests(unittest.TestCase):
     def test_legacy_profile_is_available(self):
         r, _ = self.run_flow(p=profile(version=MINIMAL))
         self.assertIn('legacy ops gateway', r.text)
+        self.assertIn('X-Legacy-Gateway', r.headers)
+        self.assertNotIn('X-Debug-Maintenance', r.headers)
+
+    def test_latest_minimal_profile_is_preserved(self):
+        r, _ = self.run_flow(p=profile(version=MINIMAL_V2))
+        self.assertIn('legacy ops gateway (SSH)', r.text)
+        self.assertLess(r.text.index('legacy ops gateway'), r.text.index('unchanged'))
         self.assertIn('X-Legacy-Gateway', r.headers)
         self.assertNotIn('X-Debug-Maintenance', r.headers)
 

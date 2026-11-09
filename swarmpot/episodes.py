@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 from .notifications import notification_policy, notification_config_audit
 from .board import Board
 from .config import PilotConfig, load_config
+from .breadcrumbs import configuration
 from .cowrie_events import CowrieIndex
 from .cve_adapter import CveBench, CveBenchError, dump_task_snapshot
 from .defenders import (
@@ -35,6 +36,7 @@ from .defenders import (
     seed_decoy_home,
 )
 from .events import EventLog
+from .run_records import termination_facts, finalization_facts
 from .isolation import write_reset_manifest
 from .ledger import (
     begin_attempt,
@@ -55,6 +57,7 @@ from .overrides import (
     write_override,
 )
 from .pricing import Pricing
+from .usage import account_delta, fetch_openrouter_credits
 from .util import ROOT, RUNS_DIR, ensure_dir, now_iso, read_json, utc_stamp, write_json
 
 DEFAULT_EGRESS_ALLOW = "openrouter.ai:443,api.openai.com:443,api.anthropic.com:443"
@@ -258,6 +261,10 @@ def _write_manifest(
             "lure_enabled": lure_enabled,
         },
         "egress_allow": egress_allow,
+        "lure": {
+            "variant": configuration(cfg)["version"],
+            "sidecar_sha256": _file_sha256(ROOT / "swarmpot" / "sidecar.py"),
+        },
         "upstream": CveBench(cfg.cvebench).host_pin(),
         "vendor_lock": read_json(ROOT / "vendor.lock.json", default={}),
         "images": _image_digests(),
@@ -275,6 +282,8 @@ def _write_manifest(
             "classification": _file_sha256(ROOT / "swarmpot" / "classify.py"),
             "metrics": _file_sha256(ROOT / "swarmpot" / "metrics.py"),
             "events_schema": 2,
+            "sidecar": _file_sha256(ROOT / "swarmpot" / "sidecar.py"),
+            "judge": _file_sha256(ROOT / "swarmpot" / "judge.py"),
         },
     }
     manifest.update(snapshot)
@@ -370,9 +379,16 @@ def _wait_for_container(container_id: str, timeout_seconds: int) -> Dict[str, An
     )
     try:
         stdout, stderr = proc.communicate(timeout=timeout_seconds)
+        raw_exit = stdout.strip()
+        try:
+            exit_code = int(raw_exit)
+        except ValueError:
+            exit_code = None
         return {
-            "exit_code": int(stdout.strip() or 0),
+            "exit_code": exit_code,
             "timed_out": False,
+            "wait_returncode": proc.returncode,
+            "wait_error": proc.returncode != 0 or exit_code is None,
             "waited_seconds": round(time.time() - started, 1),
             "stderr": stderr[-2000:],
         }
@@ -425,6 +441,7 @@ def _prepare_stack(
     # The ledger entry exists before any container starts, so launch failures
     # and never-started attempts remain visible.
     config_id = config_fingerprint(cfg, cve, arm_name, prompt)
+    write_json(paths.root / "usage_before.json", fetch_openrouter_credits())
     begin_attempt(
         paths.root,
         episode_id,
@@ -500,6 +517,7 @@ def _prepare_stack(
         if not profile:
             raise EpisodeError("sidecar did not freeze its breadcrumb profile")
         manifest["breadcrumbs"] = profile
+        manifest["lure"]["profile_sha256"] = profile["sha256"]
         write_json(paths.root / "manifest.json", manifest)
         events.lifecycle("breadcrumb_profile", version=profile["version"], sha256=profile["sha256"],
                          enabled=profile["enabled"], routes=profile["routes"], collisions=profile["collisions"])
@@ -647,7 +665,11 @@ def _run_attacker(state: Dict[str, Any]) -> Dict[str, Any]:
 
     wait_seconds = cfg.attacker.wall_clock_minutes * 60 + 300
     result = _wait_for_container(container_id, wait_seconds)
-    events.lifecycle("attacker_exit", **result)
+    # Persist the observed exit before optional log/state collection can fail.
+    write_json(state["paths"].attacker / "exit.json", result)
+    facts = termination_facts(state["paths"].root, exit_record=result)
+    events.lifecycle("attacker_exit", **result, termination=facts,
+                     stop_reason=facts["reason"], description=facts["description"])
 
     _container_logs(container_id, state["paths"].attacker / "container.log")
     try:
@@ -660,9 +682,6 @@ def _run_attacker(state: Dict[str, Any]) -> Dict[str, Any]:
     except EpisodeError:
         pass
 
-    state["paths"].attacker.joinpath("exit.json").write_text(
-        json.dumps(result, indent=2) + "\n", encoding="utf-8"
-    )
     return result
 
 
@@ -811,12 +830,37 @@ def run_episode(
                     grader_path=str(paths.root / "grader.json"),
                 )
 
-            metrics = compute_metrics(
-                state,
-                grader=grader,
-                defender_state=defender_state,
-                pricing=pricing,
-            )
+            write_json(paths.root / "usage_after.json", fetch_openrouter_credits())
+            metrics_incomplete = False
+            try:
+                metrics = compute_metrics(
+                    state,
+                    grader=grader,
+                    defender_state=defender_state,
+                    pricing=pricing,
+                )
+            except Exception as metrics_exc:  # preserve the official verdict
+                metrics_incomplete = True
+                metrics = {
+                    "episode_id": state["episode_id"],
+                    "cve": state["cve"],
+                    "arm": state["arm_name"],
+                    "repetition": state["rep"],
+                    "headline": {
+                        "real_success": grader.get("status"),
+                        "real_success_message": grader.get("message", ""),
+                        "grader_entrypoint": grader.get("entrypoint"),
+                    },
+                    "audit": {"metrics_error": repr(metrics_exc)},
+                    "incomplete": True,
+                }
+                events.emit(
+                    "system",
+                    "metrics_error",
+                    status="incomplete",
+                    reason=type(metrics_exc).__name__,
+                    payload={"error": repr(metrics_exc), "official_verdict_preserved": grader.get("status")},
+                )
             metrics["attempt"] = {
                 "attempt_id": attempt_id,
                 "status": "interrupted" if interrupted else "measured",
@@ -887,7 +931,8 @@ def run_episode(
             metrics=metrics or None,
             error=error_text or teardown_error,
         )
-        events.lifecycle("attempt_finalized", **{k: final.get(k) for k in ("status", "valid", "exclusion_reason")})
+        events.lifecycle("attempt_finalized", **{k: final.get(k) for k in ("status", "valid", "exclusion_reason")},
+                         finalization=finalization_facts(final, metrics_written=bool(metrics), grader_status=grader.get("status")))
 
     return read_json(paths.root / "metrics.json", default={})
 

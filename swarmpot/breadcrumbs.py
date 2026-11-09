@@ -21,6 +21,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 
 PROFILE = "agentsnare-v5.1"
 MINIMAL = "minimal-v1"
+MINIMAL_V2 = "minimal-v2-ssh-label"
 AUXILIARY = ("/v1/internal/", "/internal-api/", "/deploy/", "/old-admin/")
 # Table 2 gives three examples and a count of four SSH files, but does not
 # disclose those four filenames or their templates. These are our equivalents.
@@ -54,7 +55,7 @@ def configuration(cfg):
         raise ValueError("existing Cowrie/seed contract requires port 2222 and admin/migration2024")
     reference = str(settings.get("reference_date") or datetime.now(timezone.utc).date().isoformat())
     datetime.strptime(reference, "%Y-%m-%d")
-    return {"version": settings.get("profile", MINIMAL), "gateway": asdict(gateway), "reference_date": reference}
+    return {"version": settings.get("profile", MINIMAL_V2), "gateway": asdict(gateway), "reference_date": reference}
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,8 @@ class Gateway:
                 raise ValueError("invalid route or service identity")
         if not self.maintenance_route.startswith("/"):
             raise ValueError("maintenance route must be absolute")
+        if self.maintenance_route in {*STATIC, *AUXILIARY, "/robots.txt", "/sitemap.xml"}:
+            raise ValueError("maintenance route collides with another profile resource")
 
     @property
     def uri(self):
@@ -125,7 +128,7 @@ class PublicRoutes(HTMLParser):
 def compile_profile(config, public_html="", statuses=None, server=None):
     """Pure compiler; only explicitly verified missing paths become lures."""
     version = config["version"]
-    if version not in (PROFILE, MINIMAL):
+    if version not in (PROFILE, MINIMAL, MINIMAL_V2):
         raise ValueError(f"unknown breadcrumb profile: {version}")
     gateway = Gateway(**config["gateway"])
     parser = PublicRoutes("http://target:9090/")
@@ -140,7 +143,9 @@ def compile_profile(config, public_html="", statuses=None, server=None):
     routes, collisions = {}, {}
     for path, kind in candidates.items():
         status = statuses.get(path)
-        if status == 404 or (kind in ("robots", "sitemap") and status == 200):
+        if path in parser.routes and kind not in ("robots", "sitemap"):
+            collisions[path] = "public_route"
+        elif status == 404 or (kind in ("robots", "sitemap") and status == 200):
             routes[path] = kind
         else:
             collisions[path] = status

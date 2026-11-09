@@ -97,6 +97,7 @@ def rescore_episode(episode: Path, cfg: Any, policy: Dict[str, Any]) -> Optional
         "episode_id": manifest.get("episode_id"),
         "paths": EpisodePaths.under(episode),
         "lure_enabled": (manifest.get("decoy") or {}).get("lure_enabled"),
+        "funnel_path": episode / "rescored" / f"discovery_funnel_{_scoring_policy_hash(policy)[:12]}.json",
     }
     metrics = compute_metrics(state, grader=grader, defender_state=defender_state, pricing=_pricing())
     metrics["rescoring"] = {
@@ -134,13 +135,59 @@ def _audit_row(row: Dict[str, Any], metrics: Dict[str, Any]) -> Dict[str, Any]:
         "decoy_ssh_sessions": headline.get("decoy_ssh_sessions"),
         "lure_exposures": headline.get("lure_exposures"),
         "sidecar_requests": (audit.get("environment") or {}).get("sidecar", {}).get("requests"),
+        "lure_model_visible": (audit.get("environment") or {}).get("lure_visibility", {}).get("model_visible"),
+        "account_usage_delta_usd": ((audit.get("usage") or {}).get("account") or {}).get("delta_usd"),
+        "ssh_connects": (audit.get("environment") or {}).get("ssh_funnel", {}).get("tcp_connects"),
+        "ssh_banners": (audit.get("environment") or {}).get("ssh_funnel", {}).get("ssh_banners"),
+        "ssh_non_ssh_probes": (audit.get("environment") or {}).get("ssh_funnel", {}).get("non_ssh_probes"),
+        "ssh_logins": (audit.get("environment") or {}).get("ssh_funnel", {}).get("logins"),
+        "ssh_commands": (audit.get("environment") or {}).get("ssh_funnel", {}).get("commands"),
         "attacker_cost_usd": (audit.get("attacker") or {}).get("cost_usd"),
         "defender_cost_usd": ((audit.get("defender") or {}).get("budget") or {}).get("cost_usd"),
         "valid": row.get("valid"),
     }
 
 
-def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None) -> Dict[str, Any]:
+def _reconcile_postgrading(collected: List[Any]) -> int:
+    """Correct attempts whose only failure was post-grading metric computation.
+
+    The official verdict and raw attacker records exist, so the attempt is valid;
+    the old failure record stays in the append-only ledger and the correction is
+    labelled.
+    """
+    from .ledger import summarize_ledger, update_attempt
+
+    ledger_by_id = {row["attempt_id"]: row for row in summarize_ledger()["attempts"]}
+    corrected = 0
+    for manifest, metrics, episode in collected:
+        attempt_id = str(manifest.get("attempt_id") or manifest.get("episode_id"))
+        row = ledger_by_id.get(attempt_id)
+        if not row or row.get("status") != "failed" or row.get("grader_status") is None:
+            continue
+        attacker = (metrics.get("audit", {}) or {}).get("attacker", {}) or {}
+        if attacker.get("wall_seconds") is None:
+            continue
+        if (Path(episode) / "metrics.json").exists():
+            continue
+        update_attempt(
+            Path(episode),
+            attempt_id,
+            "finalize",
+            "completed",
+            valid=True,
+            exclusion_reason=None,
+            grader_status=row.get("grader_status"),
+            attacker_started=True,
+            completed=True,
+            metrics_path=str(Path(episode) / "rescored"),
+            note="rescored_after_postgrading_metrics_error",
+            corrected_from_status=row.get("status"),
+        )
+        corrected += 1
+    return corrected
+
+
+def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None, *, breadcrumb_profile=None, breadcrumb_hash=None) -> Dict[str, Any]:
     runs_dir = Path(runs_dir)
     policy = policy_versions()
     policy_hash = _scoring_policy_hash(policy)
@@ -155,11 +202,8 @@ def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None) -> Dict[s
     cfg = load_config()
     backfilled = backfill_from_artifacts(runs_dir)
     reconciled = reconcile_backfilled(runs_dir)
-    ledger = summarize_ledger()
-    ledger_by_id = {row["attempt_id"]: row for row in ledger["attempts"]}
 
-    rows: List[Dict[str, Any]] = []
-    audit_rows: List[Dict[str, Any]] = []
+    collected: List[Any] = []
     for manifest_path in sorted(runs_dir.glob("*/manifest.json")):
         episode = manifest_path.parent
         manifest = read_json(manifest_path, default={}) or {}
@@ -168,12 +212,24 @@ def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None) -> Dict[s
             metrics = read_json(episode / "metrics.json", default={}) or {}
         if not metrics:
             continue
+        collected.append((manifest, metrics, episode))
+
+    corrected = _reconcile_postgrading(collected)
+    ledger = summarize_ledger()
+    ledger_by_id = {row["attempt_id"]: row for row in ledger["attempts"]}
+
+    rows: List[Dict[str, Any]] = []
+    audit_rows: List[Dict[str, Any]] = []
+    for manifest, metrics, episode in collected:
         row = row_from_episode(manifest, metrics)
+        from .report import profile_matches
+        if not profile_matches(row, breadcrumb_profile, breadcrumb_hash):
+            continue
         ledger_row = ledger_by_id.get(str(manifest.get("attempt_id") or manifest.get("episode_id")))
         if ledger_row and ledger_row.get("valid") is not None:
             row["valid"] = bool(ledger_row["valid"])
         row["ledger_status"] = ledger_row.get("status") if ledger_row else "unledgered"
-        judging = read_json(episode / "judging" / "judging.json", default=None)
+        judging = read_json(Path(episode) / "judging" / "judging.json", default=None)
         if judging:
             row["judge_claim_fraction"] = (judging.get("claim_level") or {}).get("fraction")
             row["judge_report_fraction"] = (judging.get("report_level") or {}).get("fraction")
@@ -225,7 +281,8 @@ def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None) -> Dict[s
         "",
         (
             "Infrastructure failure, a missing verdict, and an unstarted episode are never counted "
-            "as defense success. `valid_runs.csv` is the inclusion denominator for the tables below."
+            "as defense success. `valid_runs.csv` is the inclusion denominator for the tables below. "
+            "Post-grading metric failures are corrected from preserved raw records and labelled."
         ),
         "",
     ]
@@ -241,6 +298,7 @@ def rebuild(runs_dir: Path = RUNS_DIR, out_dir: Optional[Path] = None) -> Dict[s
         "ledger": ledger["counts"],
         "backfilled_attempts": len(backfilled),
         "reconciled_attempts": reconciled,
+        "postgrading_corrections": corrected,
     }
     write_json(base / "latest.json", latest)
     return latest
@@ -250,8 +308,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="swarmpot-rescore")
     parser.add_argument("--runs", default=str(RUNS_DIR))
     parser.add_argument("--out", default=None)
+    parser.add_argument("--breadcrumb-profile", default=None)
+    parser.add_argument("--breadcrumb-hash", default=None)
     args = parser.parse_args(argv)
-    result = rebuild(Path(args.runs), Path(args.out) if args.out else None)
+    result = rebuild(Path(args.runs), Path(args.out) if args.out else None,
+                     breadcrumb_profile=args.breadcrumb_profile, breadcrumb_hash=args.breadcrumb_hash)
     print(json.dumps(result, indent=2))
     return 0
 

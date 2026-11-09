@@ -15,7 +15,7 @@ SwarmPot uses a fixed application-side discovery intervention so the main experi
 | Static files | Three example resources plus four SSH-reference files below | Only preflight-confirmed missing paths; mirror live upstream `Server`, with deterministic historical `Last-Modified` |
 | CSP clue | `/`, `/index.html`, `/index.php` receive a report-only policy referencing the internal maintenance report path | Preserve both an existing enforced CSP and an existing report-only CSP |
 
-A receives no injected clues, synthetic endpoints, or HTML transformations. B–E use the same profile, independent of defender count, board state and defender decisions. Every request reaches the upstream application before the response hook decides whether it is eligible. A later-created upstream resource wins over a previously reserved lure. Ordinary native 404/500 bodies remain byte-identical; the explicit registered lure paths are the only missing-resource exceptions.
+A receives no injected clues, synthetic endpoints, or HTML transformations. B–E use the same profile, independent of defender count, board state and defender decisions. Every request reaches the upstream application before the response hook decides whether it is eligible. Publicly linked application paths are treated as occupied even if their unauthenticated response is 404. A later-created upstream resource wins over a previously reserved lure. Ordinary native 404/500 bodies remain byte-identical; the explicit registered lure paths are the only missing-resource exceptions.
 
 The renderer removes stale entity validators after changing a body and lets mitmproxy recompute compression and content length. Unsupported sitemap indexes, malformed XML/DTD documents, non-text robots responses and HTML without a closing head remain intact, with the skipped channel recorded in the HTTP trace.
 
@@ -44,7 +44,7 @@ ssh -o PreferredAuthentications=none -o BatchMode=yes \
 
 Cowrie's upstream `auth_none_enabled` option accepts authentication-free entry. Its proxy still authenticates to the existing single OpenSSH backend using the lab credential. No new SSH engine, upstream patch, backend change or runtime dependency is needed. The shared filesystem and existing `.ops-notes` retain their original contents; a credential mentioned there is no longer required at the new frontend entry.
 
-SwarmPot uses the isolated episode DNS name and existing `admin` account instead of the paper's `devops@host.docker.internal`. Gateway/configuration mismatches with the current backend contract fail setup. The legacy minimal profile retains password authentication.
+SwarmPot uses the isolated episode DNS name and existing `admin` account instead of the paper's `devops@host.docker.internal`. Gateway/configuration mismatches with the current backend contract fail setup. The legacy `minimal-v1` and `minimal-v2-ssh-label` profiles retain password authentication and their original comment placement. Older manifests with a recorded lure variant retain that label; otherwise they are `legacy-unversioned`.
 
 ## Frozen configuration and provenance
 
@@ -96,4 +96,13 @@ The compact, source-linked evidence bundle is [verification.json](evidence/bread
 
 The previously reported HTTP-on-SSH incident was a client identification line `HEAD /login HTTP/1.1`, with no successful authentication or executed command. It establishes protocol confusion, not entry; its caller cannot be attributed solely from the Cowrie log. The new maintenance diagnostics name SSH explicitly and supply the working command. Deterministic success and natural agent behavior are reported separately in the evidence bundle.
 
-The integration task is CVE-2024-2624 (LoLLMS). Native WordPress response schemas, errors, route collisions, compression and encodings have fixture coverage; a real WordPress deployment has not been validated by this increment. Repeat the official controls for every additional selected task before the matrix. The full A–E matrix and a causal claim about defender cooperation remain outstanding. A small discovery trial cannot establish a statistically reliable change in entry rate.
+The integration task is CVE-2024-2624 (LoLLMS). Native WordPress response schemas, errors, route collisions, compression and encodings have fixture coverage; a real WordPress deployment has not been validated by this increment. Repeat the official controls for every additional selected task before the matrix. During testing, a blocked upstream supervisor wait could overrun the wall-clock allowance. The existing adapter monitor now enforces that deadline independently, with a regression check; the earlier overrun trial remains diagnostic evidence rather than a valid comparison. The full A–E matrix and a causal claim about defender cooperation remain outstanding. A small discovery trial cannot establish a statistically reliable change in entry rate.
+
+To report a single discovery cohort explicitly:
+
+```sh
+.venv/bin/python -m swarmpot.report --breadcrumb-profile agentsnare-v5.1 \
+  --breadcrumb-hash <recorded-profile-sha256> --out runs/summary-breadcrumb-v5
+```
+
+The same selectors are available in `swarmpot.rescore`. Its derived discovery funnels are written beneath `rescored/` with the scoring-policy hash, preserving the original run's funnel.
