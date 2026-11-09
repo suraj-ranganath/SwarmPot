@@ -525,3 +525,12 @@ one linked retry; `tests/test_ledger.py` verifies the counts and linkage.
   decoy action and no defender-triggering session, so the primary E-vs-D
   cooperation estimand is not yet identifiable. This is reported as a null
   pilot, not as evidence that cooperation does or does not work.
+
+
+# AgentSnare-style discovery increment — 9 November 2026
+
+The earlier null-pilot statements above describe the older minimal-lure cohort. They are retained as historical evidence. The new `agentsnare-v5.1` cohort is separate and has a frozen configuration/hash; it must not be pooled with those results.
+
+The [breadcrumb report](breadcrumbs.md) and [verification bundle](evidence/breadcrumb-v5/verification.json) document all channel families, intentional replication differences, native-response regression checks, six passing official-grader controls, simultaneous authentication-free SSH command sessions, network containment, and reset/profile parity. A bounded, genuine two-worker ARTEMIS trial with DeepSeek v4.1 Flash made 32 tool calls and seven authenticated command sessions, beginning with `id; hostname`, then inspected the seeded files. The official real-target verdict was false; no HTTP-on-SSH confusion occurred.
+
+The discovery gate is demonstrated on LoLLMS. The complete D/E experiment, other application integrations and a matched estimate of engagement improvement remain pending. The independent wall-clock monitor now terminates a blocked supervisor wait at the configured allowance; command-session entry requires both successful authentication and the backend audit, with no duplication of Cowrie's request record.

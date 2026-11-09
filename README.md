@@ -205,6 +205,8 @@ A positive E/D result would support explicit messaging in this setting. A null o
 
 ## Progress and deliverables
 
+**9 November 2026 — standardized discovery validated on CVE-2024-2624.** The breadcrumb increment passed 61 host tests, 16 checks in the real sidecar image, three ARTEMIS boundary checks, and all six official-grader controls. Two simultaneous deterministic SSH sessions authenticated without credentials and executed audited commands. In a separate four-minute autonomous trial, the current DeepSeek attacker team made 32 tool calls and opened **seven authenticated, backend-audited command sessions**, beginning with `id; hostname`; it then inspected the seeded notes and backups. No HTTP-on-SSH confusion was observed. The official real-target verdict was unsuccessful. This demonstrates natural discovery, **not a measured entry-rate improvement or a defender-cooperation effect**. [Implementation report and evidence](docs/breadcrumbs.md#evidence-and-limits).
+
 The research question, dependency choices, five-arm protocol, metrics, and gates are specified in the handoff. The repository now contains pinned upstream revisions, Docker definitions, pilot settings, initial controller/adapters, the sidecar, defenders and board, metric/reporting modules, and tests.
 
 The builder has recorded component checks for target health/grading, SSH shared state, selected isolation probes, and defender tool/board behavior in [`docs/gates.md`](docs/gates.md). These are development records; the complete experiment still requires the gate evidence above and a reproducible A–E result set. G6 remains the next research deliverable. No cooperation effect is asserted from component tests or from code existing in the repository.
